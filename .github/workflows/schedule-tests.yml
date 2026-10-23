@@ -29,7 +29,7 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --extra dev
       - run: uv run pytest -q
-      - run: bash -n scripts/install-pedro-docker.sh scripts/configure-pedro-docker.sh
+      - run: bash -n scripts/install-pedro-docker.sh scripts/configure-pedro-docker.sh scripts/inspect-pedro-nginx.sh
 
   docker:
     needs: test

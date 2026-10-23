@@ -90,7 +90,9 @@ roborock_configure_and_start() {
       return 1
     fi
   done
-  sudo openssl x509 -in "$cert_dir/onefallday.com-fullchain.pem" -noout -checkhost "$fqdn" || return 1
+  # x509 -checkhost can exit successfully even when its printed result is a mismatch.
+  sudo openssl verify -purpose sslserver -verify_hostname "$fqdn" \
+    -untrusted "$cert_dir/onefallday.com-fullchain.pem" "$cert_dir/onefallday.com-fullchain.pem" || return 1
   sudo openssl x509 -in "$cert_dir/onefallday.com-fullchain.pem" -noout -checkend 0 || return 1
   if [ -L "$runtime_dir/data/certs" ]; then
     printf 'ERROR: Certificate destination is a symlink; preserving it.\n' >&2

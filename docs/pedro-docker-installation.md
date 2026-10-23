@@ -60,14 +60,21 @@ not modified by this installation.
 
 ## Stage 2: DNS, certificates, and server configuration
 
-Resolve these before running the configuration wizard:
+**Selected approach: Nginx owns HTTPS and MQTT TLS.** Pedro wants certificates
+visible in his existing Nginx setup and updated through his existing deployment
+hook. Follow [the Nginx deployment plan](pedro-nginx-deployment.md) and its
+read-only inspection first. The direct-TLS helper below is an alternative,
+not the selected startup path; it copies certificates only once.
+
+Prerequisites for the selected proxy setup or the direct-TLS alternative:
 
 - Reserve the Linux host's LAN address in UniFi.
 - Use `api-roborock.onefallday.com`. Local DNS
   must resolve it to the Linux host from the IoT VLAN, phone, and onboarding
   computer. Public inbound port forwarding is not needed for LAN operation.
-- Choose the ports after checking the Stage 1 listener report. The prepared
-  Compose file defaults to TCP 555 and 8881, with embedded Mosquitto internal.
+- Choose the ports after checking the Stage 1 listener report. Nginx clients
+  will use TCP 443 and 8881, with loopback backends on 555 and 18881. The original
+  Stage 1 Compose file defaults to TCP 555 and 8881, with embedded Mosquitto internal.
   If changing ports, match `config.toml` and the runtime `.env` variables
   `ROBOROCK_SERVER_HTTPS_PORT` / `ROBOROCK_SERVER_MQTT_TLS_PORT`.
   `ROBOROCK_SERVER_BIND_IP` can restrict publishing to the host's LAN address.
@@ -76,14 +83,12 @@ Resolve these before running the configuration wizard:
   SSL.com, and failure with Let's Encrypt; S7 MaxV has working ZeroSSL and
   Let's Encrypt reports. Actalis compatibility on this S7 MaxV is not yet
   established. Do not assume an existing Let's Encrypt setup covers both.
-- Use the existing certificate workflow and select **provided certificates**,
-  answering **no** to Cloudflare in the wizard. DNSExit handles the existing
-  certificate workflow; the server does not need its API credentials. Arrange
-  a copy/deploy step into this server's certificate directory, and a server
-  restart after renewal so its TLS listeners load the renewed certificate.
-  Verify the existing deploy hook and renewal mechanism before adding that
-  step; a one-time copy alone is not ongoing renewal integration. See
-  [custom certificate management](custom_cert_management.md).
+- Use the existing certificate workflow. Nginx will reference the existing
+  `/etc/nginx/ssl/onefallday/` certificate files, which the deployment hook
+  already updates before reloading Nginx. Verify the live paths/hook first.
+  The selected `external_tls` mode needs no certificate copy or DNSExit API
+  credentials inside Docker. The direct-TLS alternative below instead copies
+  certificates into the runtime and would need a separate renewal deploy step.
 - Plan the camera hostname before pairing Uptown. The firmware-specific input
   must fit the [camera guide's](camera.md) 15-character rule, including a port
   and trailing slash. A hostname adequate for schedules can be too long for
@@ -100,7 +105,9 @@ Resolve these before running the configuration wizard:
 
 Stage 1 completed on `192.168.84.2` with image
 `local/roborock-server:schedule-7e07021b6f51`. Nginx already owns port 443;
-the Roborock service uses TCP 555 and 8881. The host's DNS and default gateway
+the prepared direct-TLS Compose file uses TCP 555 and 8881. The selected Nginx
+plan changes the client HTTPS port to 443 and keeps its backends on loopback.
+The host's DNS and default gateway
 are `192.168.84.1`. The local A record for `api-roborock.onefallday.com`
 has been verified from the Linux host. Reserve its DHCP address in UniFi.
 Use only the A record until IPv6 publishing and connectivity have been tested.
@@ -108,7 +115,8 @@ Use only the A record until IPv6 publishing and connectivity have been tested.
 The existing Internal-to-IoT policy allows connections, while IoT-to-Internal
 allows replies. Add an exception for **new** connections from
 `192.168.69.140` and `192.168.69.178` in IoT to `192.168.84.2` in Internal,
-IPv4 TCP destination ports 555 and 8881, source port any. Put it above the
+IPv4 TCP destination ports **443 and 8881**, source port any (the earlier
+direct-TLS plan used 555 instead of 443). Put it above the
 inter-zone block. Replies are already permitted by Internal-to-IoT. Check DNS
 access to the gateway and test from the IoT network before pairing; the host's
 DNS result alone does not verify the robot's network access.
@@ -118,7 +126,7 @@ The actual certificate is Let's Encrypt YR2, covers `onefallday.com` and
 now. S7 trust compatibility is still unresolved; a successful browser or
 Linux TLS test does not establish that Downtown will trust this chain.
 
-### Configure and start the existing image
+### Alternative: direct TLS in the existing image (not selected)
 
 Update this branch with `git pull --ff-only origin SCHEDULE_SUPPORT` from a
 clean `SCHEDULE_SUPPORT` checkout. Then run the new helper from an interactive

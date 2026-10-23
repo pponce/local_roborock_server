@@ -22,6 +22,11 @@ installation guide or a claim that schedule support is complete.
   [Pedro's Docker installation guide](pedro-docker-installation.md), using
   `scripts/install-pedro-docker.sh`. It builds the image and prepares the runtime
   directory; DNS, certificates, configuration, and robot pairing follow.
+- Docker installation and the `7e07021b6f51` image build have completed on
+  `192.168.84.2`; local hostname resolution was verified through `192.168.84.1`.
+  Pedro selected [Nginx-managed HTTPS and MQTT TLS](pedro-nginx-deployment.md)
+  so existing certificate deployment/reloads cover both endpoints. Host Nginx
+  inspection is next; no Roborock service or robot pairing has started yet.
 
 ## Responsibilities
 
