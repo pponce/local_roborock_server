@@ -12,9 +12,11 @@ copies renewed `onefallday.com` certificate files to:
 - `/etc/nginx/ssl/onefallday/fullchain.pem`
 - `/etc/nginx/ssl/onefallday/privkey.pem`
 
-It then reloads Nginx. Both Roborock Nginx listeners will use these paths.
-Once the matching hook is confirmed on the host, successful renewals/deployments
-will update the certificates used for new HTTPS and MQTT TLS connections.
+It then reloads Nginx. Both Roborock Nginx listeners use these paths.
+The host's deploy-hook SHA256, reported October 23, matches the repository:
+`157f51a63ae5c2b48676c31a57e3222d746343388771a518343472e72741a965`.
+Successful renewals/deployments through that hook update the certificates used
+for new HTTPS and MQTT TLS connections.
 Existing MQTT connections may continue through a graceful Nginx reload.
 This does not establish whether certificate renewal is scheduled on the host.
 
@@ -24,7 +26,7 @@ container. See [reverse proxy support](reverse_proxy.md). TLS termination does
 not change the certificate issuer: Downtown S7's reported Let's Encrypt trust
 issue still needs validation before pairing.
 
-## Proposed endpoint mapping
+## Selected endpoint mapping
 
 | Connection | Client endpoint on 192.168.84.2 | Host-only Docker backend |
 | --- | --- | --- |
@@ -47,7 +49,7 @@ Restrict this virtual host to the intended LAN clients; a local DNS record
 alone does not prevent access through an existing public Nginx port forward.
 The MQTT listener should likewise be LAN-restricted. Retain other Nginx sites.
 
-## Inspect before installing Nginx configuration
+## Nginx configuration
 
 The prepared configuration files are:
 
@@ -70,12 +72,13 @@ stream {
 ```
 
 If `stream {}` already exists, add the include/server there rather than
-creating another stream block. The live module and include layout still need
-inspection before choosing the final installation path. The source checkout
-holds templates; Nginx's deployed configuration should use files under `/etc/nginx`.
-Back up existing Nginx configuration under the project's `backups/` folder,
-then run `sudo nginx -t` before reloading. No Nginx validation was run against
-Pedro's host by preparing these templates.
+creating another stream block. Pedro's inspection confirmed the stream module
+is loaded, this top-level include is active, and the deployed files are
+`/etc/nginx/sites-enabled/api-roborock.onefallday.com` and
+`/etc/nginx/streams-enabled/roborock-mqtt.conf`. Nginx syntax validation passed,
+with listeners on 443 and `192.168.84.2:8881`; backend ports 555/18881 were free.
+Pedro explicitly does not want a backup for adding Nginx stream support.
+Run `sudo nginx -t` before applying later Nginx configuration changes.
 
 The container is not configured or started yet, so a 502 from the new HTTP
 proxy is expected until its backend is running. Backend ports and
@@ -93,24 +96,53 @@ certificate metadata, the deploy-hook checksum, and port listeners. It never
 prints private-key contents or the full configuration, creates no output files,
 and changes no services. Return the `START COPY HERE` / `END COPY HERE` section.
 
-The host-specific installation still needs:
+## First Docker startup
 
-1. Confirm the stream TLS module is available/loaded and locate the active
-   HTTP and top-level stream includes. MQTT TLS requires the stream module;
-   adding an HTTP proxy host alone is insufficient.
-2. Match the active certificate paths to the renewal deployment hook.
-3. Prepare an HTTPS virtual host and an MQTT stream using those same paths,
-   with appropriate LAN access. Preserve HTTP Host and forwarding headers.
-4. Determine the Docker bridge gateway that Nginx connections appear to come
-   from and add that specific proxy address to `network.trusted_proxies`.
-   Do not trust all private-address ranges. Verify both HTTP and MQTT proxy
-   handling before onboarding.
-5. Back up runtime and relevant Nginx configuration under the development
-   checkout's `backups/<timestamp>/server/` before installing changes. Keep
-   working files/logs under `local-work/`; the deployed runtime stays in `/opt`.
-6. Validate Nginx configuration before reload; verify local backend health,
-   public HTTPS/MQTT certificate handshakes, and access from the IoT network.
-   Then capture robot backups and import cloud data before pairing one robot.
+Run as Pedro, without sudo before bash:
+
+```bash
+cd /home/pedro/devProjects/local_roborock_server &&
+git pull --ff-only origin SCHEDULE_SUPPORT &&
+bash scripts/configure-pedro-nginx-docker.sh
+```
+
+The helper reuses the image recorded in `/opt/local_roborock_server/SOURCE_COMMIT`
+(currently `local/roborock-server:schedule-7e07021b6f51`). Pulling deployment
+scripts does not require rebuilding this image. It:
+
+1. Validates the existing runtime Compose file, requiring loopback-only backend
+   bindings and the expected image, network, mounts and HTTP health check.
+2. Starts a temporary, credential-free backend on the project's actual Docker
+   network. Requests through Nginx 443 and 8881 verify the TLS certificate,
+   forwarding ports, HTTP headers and proxy source address seen inside Docker.
+   The MQTT stream carries a disposable HTTP probe during this check; the real
+   MQTT service replaces it immediately afterward. No robot is contacted.
+3. Removes that probe while retaining the project network. The measured bridge
+   address becomes the sole `network.trusted_proxies` entry. A different route
+   or address stops setup for review; it never trusts entire private networks.
+4. Prompts for a new local dashboard password, login email and six-digit local
+   app/plugin PIN. These are user-chosen local credentials. The email may be the
+   existing Roborock email; this does not change the cloud account or password.
+   Cloud import later uses a separate verification code emailed by Roborock.
+5. Creates `config.toml` and `.env` under `/opt/local_roborock_server`, with
+   external TLS, Pacific time, internal ports 555/18881, advertised ports
+   443/8881, and no certificate material. Matching credentials are preserved
+   on a retry; conflicting files are not overwritten.
+6. Saves the initial runtime configuration under the development checkout's
+   `backups/<timestamp>/server/`, starts the service and verifies health and
+   HTTPS/MQTT TLS. Logs remain under `local-work/`; temporary probe files are
+   removed. Nginx configuration and certificate files are not changed.
+
+Open `https://api-roborock.onefallday.com/admin` and use the local dashboard
+password. Return the helper's `START COPY HERE` / `END COPY HERE` report.
+The helper is for first startup and preserves any existing server container.
+If it reports a failure after startup, inspect that container rather than
+rerunning the installer or removing persistent data.
+
+Remaining before robot migration: test access from the IoT network, capture
+available maps and schedule records under this checkout's `backups/`, import
+cloud data, and then pair one vacuum. Host certificate checks do not establish
+certificate trust on either robot. Schedule hardware testing remains pending.
 
 The prepared direct-TLS helper (`configure-pedro-docker.sh`) remains an
 alternative and is not used for this selected Nginx deployment.

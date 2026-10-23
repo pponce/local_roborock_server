@@ -29,7 +29,7 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --extra dev
       - run: uv run pytest -q
-      - run: bash -n scripts/install-pedro-docker.sh scripts/configure-pedro-docker.sh scripts/inspect-pedro-nginx.sh
+      - run: bash -n scripts/install-pedro-docker.sh scripts/configure-pedro-docker.sh scripts/configure-pedro-nginx-docker.sh scripts/inspect-pedro-nginx.sh
 
   docker:
     needs: test
@@ -55,4 +55,6 @@ jobs:
           docker run --rm --network none
           --mount "type=bind,source=${PWD},target=/checks,readonly"
           --workdir /checks local/roborock-server:schedule-ci
-          python -B -m unittest discover -s tests -p test_pedro_runtime_config.py -v
+          python -B -m unittest discover -s tests -p 'test_pedro_*.py' -v
+      - name: Verify Nginx deployment backends with real Docker networking
+        run: bash tests/smoke_pedro_nginx_docker.sh

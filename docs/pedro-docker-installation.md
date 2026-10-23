@@ -62,8 +62,10 @@ not modified by this installation.
 
 **Selected approach: Nginx owns HTTPS and MQTT TLS.** Pedro wants certificates
 visible in his existing Nginx setup and updated through his existing deployment
-hook. Follow [the Nginx deployment plan](pedro-nginx-deployment.md) and its
-read-only inspection first. The direct-TLS helper below is an alternative,
+hook. Follow [the Nginx deployment plan](pedro-nginx-deployment.md) and run
+`scripts/configure-pedro-nginx-docker.sh` after configuring the Nginx listeners.
+The helper verifies both forwarding paths before writing the runtime configuration
+and starting the server. The direct-TLS helper below is an alternative,
 not the selected startup path; it copies certificates only once.
 
 Prerequisites for the selected proxy setup or the direct-TLS alternative:

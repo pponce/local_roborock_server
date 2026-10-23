@@ -32,12 +32,12 @@ class PedroRuntimeConfigTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.runtime = Path(self.directory.name)
 
-    def create(self):
+    def create(self, **kwargs):
         output = io.StringIO()
         with patch.object(helper, "getpass", side_effect=["local-password", "local-password", "482951", "482951"]), \
                 patch("builtins.input", return_value="person@example.com"), \
                 contextlib.redirect_stdout(output):
-            helper.prepare_config(self.runtime)
+            helper.prepare_config(self.runtime, **kwargs)
         return output.getvalue()
 
     def test_credentials_work_without_storing_or_printing_plaintext_secrets(self):
@@ -130,6 +130,45 @@ class PedroRuntimeConfigTests(unittest.TestCase):
         with patch("sys.argv", ["setup", "--runtime", str(self.runtime)]), \
                 patch.object(helper, "getpass", side_effect=AssertionError("must not prompt")):
             helper.main()
+
+    def test_nginx_uses_public_ports_and_loopback_plaintext_backends_without_certificates(self):
+        self.create(nginx_proxy="172.20.0.1")
+        config = load_config(self.runtime / "config.toml")
+        self.assertEqual(config.network.listener_mode, "external_tls")
+        self.assertEqual((config.network.https_port, config.network.mqtt_tls_port), (555, 18881))
+        self.assertEqual((config.network.advertised_https_port, config.network.advertised_mqtt_tls_port), (443, 8881))
+        self.assertEqual(config.network.trusted_proxies, ("172.20.0.1",))
+        self.assertEqual((config.tls.cert_file, config.tls.key_file), ("", ""))
+        env = (self.runtime / ".env").read_text()
+        self.assertIn("ROBOROCK_SERVER_BIND_IP=127.0.0.1\n", env)
+        self.assertIn("ROBOROCK_SERVER_HEALTHCHECK_SCHEME=http\n", env)
+        self.assertFalse((self.runtime / "data/certs").exists())
+        original = (self.runtime / "config.toml").read_bytes()
+        with patch("sys.argv", ["setup", "--runtime", str(self.runtime), "--nginx-proxy", "172.20.0.1"]), \
+                patch.object(helper, "getpass", side_effect=AssertionError("must not prompt")):
+            helper.main()
+        self.assertEqual((self.runtime / "config.toml").read_bytes(), original)
+
+    def test_nginx_refuses_a_changed_gateway_without_replacing_credentials(self):
+        self.create(nginx_proxy="172.20.0.1")
+        original = (self.runtime / "config.toml").read_bytes()
+        with self.assertRaisesRegex(ValueError, "trusted_proxies"):
+            helper.prepare_config(self.runtime, nginx_proxy="172.21.0.1")
+        self.assertEqual((self.runtime / "config.toml").read_bytes(), original)
+
+    def test_nginx_does_not_silently_convert_an_existing_direct_tls_installation(self):
+        self.create()
+        original = (self.runtime / "config.toml").read_bytes()
+        with self.assertRaisesRegex(ValueError, "environment differs"):
+            helper.prepare_config(self.runtime, nginx_proxy="172.20.0.1")
+        self.assertEqual((self.runtime / "config.toml").read_bytes(), original)
+
+    def test_nginx_rejects_unmeasured_proxy_ranges_before_prompting(self):
+        for value in ("*", "172.20.0.0/16", "0.0.0.0", "127.0.0.1", "::1", "224.0.0.1"):
+            with self.subTest(value=value), self.assertRaises(ValueError), \
+                    patch.object(helper, "getpass", side_effect=AssertionError("must not prompt")):
+                helper.prepare_config(self.runtime, nginx_proxy=value)
+        self.assertFalse((self.runtime / "config.toml").exists())
 
 
 if __name__ == "__main__":
