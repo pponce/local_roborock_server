@@ -29,6 +29,7 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --extra dev
       - run: uv run pytest -q
+      - run: bash -n scripts/install-pedro-docker.sh
 
   docker:
     needs: test
@@ -41,5 +42,11 @@ jobs:
           context: .
           platforms: linux/amd64
           push: false
+          load: true
+          tags: local/roborock-server:schedule-ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Verify schedule module in the built image
+        run: >-
+          docker run --rm --network none local/roborock-server:schedule-ci
+          python -c 'import roborock_local_server.bundled_backend.shared.schedule_runner'

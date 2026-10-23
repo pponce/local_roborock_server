@@ -18,6 +18,10 @@ installation guide or a claim that schedule support is complete.
   See [experimental schedule support and the test sequence](schedules.md).
 - Provision and run the Docker test installation after automated checks, using
   a versioned image built from this branch. Hardware validation is still pending.
+- The first Docker installation is now prepared in
+  [Pedro's Docker installation guide](pedro-docker-installation.md), using
+  `scripts/install-pedro-docker.sh`. It builds the image and prepares the runtime
+  directory; DNS, certificates, configuration, and robot pairing follow.
 
 ## Responsibilities
 
@@ -35,6 +39,8 @@ Do not move pause/delay policy into this server.
 | Location | Purpose | When |
 | --- | --- | --- |
 | `/home/pedro/devProjects/local_roborock_server/` | Git checkout, feature branches, source, tests, and Docker build context | Prepare now |
+| `/home/pedro/devProjects/local_roborock_server/backups/` | All backup files, exports, schedule captures, and migration records; private and Git-ignored | Before pairing or changing a deployment |
+| `/home/pedro/devProjects/local_roborock_server/local-work/` | Setup logs and temporary build/setup files; private and Git-ignored | During setup and maintenance |
 | `/opt/local_roborock_server/` | Deployed service configuration and persistent application files | Create during later installation |
 | `/opt/local_roborock_server/compose.yaml` | Launch the selected versioned Docker image | Later |
 | `/opt/local_roborock_server/config.toml` | Server configuration; includes sensitive settings | Later |
@@ -52,6 +58,25 @@ the actual locations during installation. The application bind mounts above
 are the files we manage directly.
 
 Homebridge remains in its existing installation.
+
+For the first installation Pedro selected the existing `onefallday.com`
+certificate workflow in `pponce/ddns-dnsexit-custom`. The server hostname is
+`api-roborock.onefallday.com` (the protocol requires the `api-` prefix).
+Use provided certificates and confirm the installed issuer, expiry, and SANs
+before pairing; the S7 has reported Let's Encrypt incompatibility. The long
+hostname also needs separate investigation for S7 MaxV camera bootstrap.
+
+Pedro requested that backups stay together inside the development project.
+Use `backups/YYYY-MM-DD-HHMMSS/` with `downtown/`, `uptown/`, and `server/`
+subdirectories as applicable. Keep robot names, model/firmware, capture time,
+and restoration notes with each set. Raw exports may contain credentials and
+household activity; never commit them. The backup folders do not enter Docker
+builds, which use an archive of the committed source tree.
+
+App-native map backups may remain on the robot or in Roborock's service; they
+cannot necessarily be exported to this directory. Save any available exports
+and screenshots here, and distinguish visual records from verified restorable
+map backups. No robot backup has been made by the setup script.
 
 ## Prepare the checkout now
 
@@ -185,6 +210,8 @@ unmodified development-tree `docker compose up` as the live deployment.
 
 Before each change, back up the deployment configuration, secrets, and the
 entire persistent `data/` directory using a consistent stopped-service backup.
+Store that archive under the dated `backups/` directory above, including the
+selected image ID, source commit, and Compose files in the restoration record.
 Keep the previous image and matching data backup for rollback; an older image
 alone may not understand data written by newer code.
 

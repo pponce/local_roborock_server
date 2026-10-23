@@ -11,3 +11,6 @@ secrets/
 config.toml
 mitm_logs
 .tmp*
+# Pedro's private exports, backups, installation logs, and temporary build files.
+/backups/
+/local-work/
