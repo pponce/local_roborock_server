@@ -96,53 +96,73 @@ Resolve these before running the configuration wizard:
   rules, and access from the phone/onboarding computer. Docker-published ports
   can bypass host UFW rules; use deliberate interface and network restrictions.
 
-Once those choices are settled, the built image can run the wizard without
-installing Python dependencies on the Linux host. Run this from an interactive
-terminal as `pedro`:
+### Recorded host and UniFi settings (October 23, 2026)
+
+Stage 1 completed on `192.168.84.2` with image
+`local/roborock-server:schedule-7e07021b6f51`. Nginx already owns port 443;
+the Roborock service uses TCP 555 and 8881. The host's DNS and default gateway
+are `192.168.84.1`. The local A record for `api-roborock.onefallday.com`
+has been verified from the Linux host. Reserve its DHCP address in UniFi.
+Use only the A record until IPv6 publishing and connectivity have been tested.
+
+The existing Internal-to-IoT policy allows connections, while IoT-to-Internal
+allows replies. Add an exception for **new** connections from
+`192.168.69.140` and `192.168.69.178` in IoT to `192.168.84.2` in Internal,
+IPv4 TCP destination ports 555 and 8881, source port any. Put it above the
+inter-zone block. Replies are already permitted by Internal-to-IoT. Check DNS
+access to the gateway and test from the IoT network before pairing; the host's
+DNS result alone does not verify the robot's network access.
+
+The actual certificate is Let's Encrypt YR2, covers `onefallday.com` and
+`*.onefallday.com`, and expires January 21, 2027. It can serve the dashboard
+now. S7 trust compatibility is still unresolved; a successful browser or
+Linux TLS test does not establish that Downtown will trust this chain.
+
+### Configure and start the existing image
+
+Update this branch with `git pull --ff-only origin SCHEDULE_SUPPORT` from a
+clean `SCHEDULE_SUPPORT` checkout. Then run the new helper from an interactive
+terminal as `pedro` (without sudo before bash):
 
 ```bash
-{
-  roborock_configure_local_server() {
-    local runtime_dir="/opt/local_roborock_server"
-    local image_name
-    image_name=$(sudo docker compose --project-directory "$runtime_dir" \
-      -f "$runtime_dir/compose.yaml" config --images) || return 1
-    sudo docker run --rm -it --pull=never \
-      --user "$(id -u):$(id -g)" \
-      --mount "type=bind,source=$runtime_dir,target=/work" \
-      --workdir /work "$image_name" \
-      sh -c 'umask 077; exec python -m roborock_local_server.configure --config /work/config.toml'
-  }
-  if roborock_configure_local_server; then
-    printf 'Configuration written. Review DNS, TLS, ports, and timezone before startup.\n'
-  else
-    printf 'Configuration incomplete; review the error above.\n'
-  fi
-  unset -f roborock_configure_local_server
-}
+bash /home/pedro/devProjects/local_roborock_server/scripts/configure-pedro-docker.sh
 ```
 
-Use the embedded broker and answer **no** to Cloudflare. Choose a new local admin password and local protocol
-login PIN. Cloud import later uses the actual Roborock account verification
-code. Set `timezone = "America/Los_Angeles"` in the `[network]` section; the
-wizard otherwise leaves the US default timezone. Match the hostname, ports,
-and certificate choice established above. Do not use `--force` on an existing
-configuration without a backup.
+This first-start helper:
 
-For supplied certificates, put `fullchain.pem` and `privkey.pem` in
-`/opt/local_roborock_server/data/certs/`, matching the container paths generated
-by the wizard. Keep private keys private. TURN remains disabled for the initial
-schedule test. When ready, start from the runtime directory:
+1. Checks host DNS, the IP address, available ports, and the existing image's
+   source revision. It uses the runtime's `SOURCE_COMMIT`, so pulling these
+   helper changes does **not** require rebuilding the already-installed image.
+   Do not rerun the Stage 1 installer just to obtain this configuration helper.
+2. Copies the existing certificate and key into runtime `data/certs/` with
+   private permissions, verifies expiry/hostname and key matching, and leaves
+   different existing destination files untouched for review.
+3. Runs `scripts/pedro_runtime_config.py` inside the built image with networking
+   disabled. It asks for a local admin password (twice), local login email,
+   and six-digit local PIN (twice). Passwords/PINs are hashed in `config.toml`.
+   The email may be the cloud-account email, but the PIN is chosen locally;
+   no cloud verification email is sent by this step.
+4. Sets the known hostname, ports, embedded broker, provided certificates,
+   `America/Los_Angeles` timezone, and Compose publishing on `192.168.84.2`.
+   An existing matching configuration is reused without changing credentials;
+   different configuration is preserved and stops the helper.
+5. Makes a private runtime archive under
+   `backups/YYYY-MM-DD-HHMMSS-<unique>/server/` before first startup. This is a
+   **server configuration backup**, not a robot/map/schedule backup. Its
+   sibling `downtown/` and `uptown/` folders remain empty until exports occur.
+6. Starts Compose using the existing image, waits for health, and verifies
+   HTTPS and MQTT TLS certificates from the host. It prints a report between
+   `START COPY HERE` and `END COPY HERE`. Setup logs stay in `local-work/`.
 
-```bash
-sudo docker compose --project-directory /opt/local_roborock_server \
-  -f /opt/local_roborock_server/compose.yaml up -d --no-build --pull never
-```
+Open `https://api-roborock.onefallday.com:555/admin` and log in with the local
+admin password. Neither vacuum is moved from cloud by running this helper.
+Robot backups, cloud import, and pairing are subsequent steps. TURN is disabled.
+Certificate copying is initial setup only: renewal/deploy-hook integration
+still needs to be installed before leaving the server running long term.
 
-Check `docker compose ps` and server logs with the same project-directory/file
-arguments. Open `https://<selected-host>:<selected-port>/admin` and log in with
-the local admin password. A container health check alone does not validate the
-certificate chain the robots will trust.
+The helper refuses to change an existing service container. If startup or
+endpoint verification fails, the container may still be running; report the
+error and inspect it before retrying. Do not delete runtime data to rerun setup.
 
 ## Stage 3: Backups, import, and one robot
 
