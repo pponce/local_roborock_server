@@ -278,3 +278,10 @@ def test_job_edit_between_tick_and_claim_cancels_stale_occurrence(tmp_path, monk
     runner.tick(_utc(2026, 9, 28, 14, 59, 40))
     runner.tick(_utc(2026, 9, 28, 15, 0, 5))
     assert fake.started == []
+
+
+def test_malformed_import_does_not_block_other_jobs(tmp_path, monkeypatch):
+    runner, _, fake = _runner_with_inventory(tmp_path, monkeypatch, [_job(id=None), _job()])
+    runner.tick(_utc(2026, 9, 28, 14, 59, 40))
+    runner.tick(_utc(2026, 9, 28, 15, 0, 5))
+    assert len(fake.started) == 1

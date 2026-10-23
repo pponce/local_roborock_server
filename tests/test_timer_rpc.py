@@ -66,12 +66,19 @@ def test_get_timer_lists_cloud_schedules_in_the_shape_localrock_parses(ctx):
     ]
 
 
-def test_native_jobs_are_not_fabricated_as_legacy_timers(ctx):
+@pytest.mark.parametrize("serialized", [False, True])
+def test_native_jobs_are_not_fabricated_as_legacy_timers(ctx, serialized):
     for job in schedule_store.list_jobs(ctx, DUID):
         param = job["param"]
         param["params"][0]["name"] = "native-" + str(job["id"])
         schedule_store.upsert_job(ctx, DUID, job_id=job["id"], cron=job["cron"],
                                   enabled=job["enabled"], param=param)
+    if serialized:
+        path = ctx.http_jsonl.parent / "web_api_inventory.json"
+        inventory = json.loads(path.read_text())
+        for job in inventory["schedules"][DUID]:
+            job["param"] = json.dumps(job["param"])
+        path.write_text(json.dumps(inventory))
     assert timer_rpc.handle_timer_request(ctx, DUID, "get_timer", []) == []
     assert len(schedule_store.list_jobs(ctx, DUID)) == 3
 

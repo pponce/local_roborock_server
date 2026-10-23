@@ -52,6 +52,8 @@ cannot dispatch the same claimed occurrence again. If that write fails, no start
 is attempted. This is an at-most-once policy: a crash after claiming but before
 sending can miss a clean. Run only one server process against an inventory; the
 inventory lock does not coordinate multiple containers or external file editors.
+Cloud re-import replaces schedule definitions, so back up local edits before
+refreshing. Occurrence claims are retained across that refresh.
 
 A fresh native timer read must find exactly one matching `on` entry. Off, missing,
 ambiguous, malformed, or unreachable timer state prevents a start. After that

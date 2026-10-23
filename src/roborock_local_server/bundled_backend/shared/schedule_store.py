@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 from datetime import datetime
+import json
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -53,18 +54,31 @@ def _normalize_setting(key: str, value: Any) -> Any:
         raise SettingsError(f"{key} must be a number, got {value!r}") from exc
 
 
+def _settings_entry(job: dict[str, Any]) -> dict[str, Any]:
+    param = job.get("param")
+    if isinstance(param, str):
+        try:
+            param = json.loads(param)
+        except json.JSONDecodeError:
+            return {}
+    params = param.get("params") if isinstance(param, dict) else None
+    return params[0] if isinstance(params, list) and params and isinstance(params[0], dict) else {}
+
+
+def has_native_timer(job: dict[str, Any]) -> bool:
+    return "name" in _settings_entry(job)
+
+
 def job_settings(job: dict[str, Any]) -> dict[str, Any]:
     """The vac/mop settings a job carries, as a flat dict.
 
     ``name``, when the job has one, rides along too, outside ``JOB_SETTING_KEYS``: it is not a
     vac/mop setting a client edits, it is the official app's own link from this job to the
     robot's server_timer entry it saved alongside it (POST/PUT /user/devices/{duid}/jobs carries
-    it in exactly this spot, confirmed live). A client that reads the job back through get_timer
-    needs it to find the robot's entry to edit or delete.
+    it in exactly this spot, confirmed live). Native timer entries themselves are
+    read from the robot; this helper does not turn them into legacy timers.
     """
-    param = job.get("param")
-    params = param.get("params") if isinstance(param, dict) else None
-    entry = params[0] if isinstance(params, list) and params and isinstance(params[0], dict) else {}
+    entry = _settings_entry(job)
     settings = {key: entry[key] for key in JOB_SETTING_KEYS if key in entry}
     name = entry.get("name")
     if isinstance(name, str) and name:

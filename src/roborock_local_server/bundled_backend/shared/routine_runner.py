@@ -96,7 +96,6 @@ _PARAM_ERROR_CODE = -10005
 # -10005 "Param error" to a value it does not support, such as a route its model lacks.
 _APP_START_KEYS = ("repeat", "water_box_mode", "segments", "fan_power", "mop_mode", "clean_mop", "map_index")
 _APP_START_DEFAULTS = {"repeat": 1, "segments": "0", "clean_mop": 1, "map_index": -1}
-_SETTING_ENTRY_KEYS = ("repeat", "fan_power", "water_box_mode", "mop_mode", "mop_template_id")
 # app_start's "source" field is how the robot learns who started a clean, for its history. 3 is
 # python-roborock's RoborockStartType.schedule, and a robot recorded the clean as "Schedule" in the
 # official app's history; an app start is 2. "start_type", "startType", "start_from", "from" and

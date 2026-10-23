@@ -276,6 +276,9 @@ class ScheduleRunner:
             for job in jobs:
                 if not isinstance(job, dict) or not as_bool(job.get("enabled", True), True):
                     continue
+                if job.get("id") in (None, ""):
+                    self._logger.warning("Skipping schedule without an id on %s", device_id)
+                    continue
                 try:
                     spec = parse_cron(str(job.get("cron") or ""))
                     zone = _zone(str(job.get("timeZoneId") or ""), self._default_timezone)
