@@ -8,14 +8,16 @@ installation guide or a claim that schedule support is complete.
 
 - Pedro has installed
   [`pponce/homebridge-roborock-matter-plus#SCHEDULE_PROTOCOL_CAPTURE`](https://github.com/pponce/homebridge-roborock-matter-plus/tree/SCHEDULE_PROTOCOL_CAPTURE).
-- Initial testing will use the existing Roborock cloud account. Live capture
-  results are pending.
+- Cloud captures have verified enable/disable, time edits through delay and
+  restoration, job/timer ID linkage, cleaning-setting shapes, and one missed
+  offline occurrence without an observed catch-up run.
 - Prepare the Linux development checkout now using
   [`scripts/setup-pedro-dev.sh`](../scripts/setup-pedro-dev.sh).
-- Implement local-server changes after reviewing the capture results and
-  relevant upstream work.
-- Provision and run the Docker test installation later, after the first
-  implementation passes its automated checks.
+- The fork's `SCHEDULE_SUPPORT` branch integrates upstream PR #179 with capture
+  compatibility fixes, native timer checks, persistence/deduplication, and tests.
+  See [experimental schedule support and the test sequence](schedules.md).
+- Provision and run the Docker test installation after automated checks, using
+  a versioned image built from this branch. Hardware validation is still pending.
 
 ## Responsibilities
 

@@ -66,6 +66,16 @@ def test_get_timer_lists_cloud_schedules_in_the_shape_localrock_parses(ctx):
     ]
 
 
+def test_native_jobs_are_not_fabricated_as_legacy_timers(ctx):
+    for job in schedule_store.list_jobs(ctx, DUID):
+        param = job["param"]
+        param["params"][0]["name"] = "native-" + str(job["id"])
+        schedule_store.upsert_job(ctx, DUID, job_id=job["id"], cron=job["cron"],
+                                  enabled=job["enabled"], param=param)
+    assert timer_rpc.handle_timer_request(ctx, DUID, "get_timer", []) == []
+    assert len(schedule_store.list_jobs(ctx, DUID)) == 3
+
+
 @pytest.mark.parametrize(
     ("cron", "expected"),
     [
