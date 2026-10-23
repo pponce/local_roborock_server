@@ -57,4 +57,21 @@ jobs:
           --workdir /checks local/roborock-server:schedule-ci
           python -B -m unittest discover -s tests -p 'test_pedro_*.py' -v
       - name: Verify Nginx deployment backends with real Docker networking
-        run: bash tests/smoke_pedro_nginx_docker.sh
+        id: nginx_smoke
+        run: |
+          smoke_status=0
+          bash tests/smoke_pedro_nginx_docker.sh > "$RUNNER_TEMP/roborock-smoke.log" 2>&1 || smoke_status=$?
+          cat "$RUNNER_TEMP/roborock-smoke.log"
+          SMOKE_STATUS="$smoke_status" python3 - <<'PY'
+          import os
+          from pathlib import Path
+          lines = (Path(os.environ['RUNNER_TEMP']) / 'roborock-smoke.log').read_text().splitlines()
+          errors = [line for line in lines if any(word in line.lower() for word in ('error', 'not found', 'unknown command'))]
+          detail = 'passed' if os.environ['SMOKE_STATUS'] == '0' else (errors[-1] if errors else 'failed; inspect smoke log')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('diagnostic=' + detail[:300] + '\n')
+          PY
+          exit "$smoke_status"
+      - name: "Docker smoke result: ${{ steps.nginx_smoke.outputs.diagnostic }}"
+        if: always() && steps.nginx_smoke.outcome != 'skipped'
+        run: 'true'
