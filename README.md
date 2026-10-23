@@ -61,6 +61,7 @@ Start here if this is your first time setting up the stack:
 Before choosing a certificate path, check [Tested vacuums](docs/tested_vacuums.md). Different models do not all accept the same certificate chains. For most users, start with ZeroSSL. Use Actalis mainly for older vacuums or models that are already known to trust that chain more reliably.
 
 Additional docs:
+- [Pedro's schedule development plan](docs/pedro-schedule-development-plan.md) (fork-specific)
 - [Docs index](docs/index.md)
 - [Technical Writeup: How Reverse Engineering Works](https://python-roborock.github.io/local_roborock_server/technical_writeup/)
 - [Known limitations](docs/known_limitations.md)
