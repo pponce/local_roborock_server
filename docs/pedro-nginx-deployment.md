@@ -49,6 +49,39 @@ The MQTT listener should likewise be LAN-restricted. Retain other Nginx sites.
 
 ## Inspect before installing Nginx configuration
 
+The prepared configuration files are:
+
+- [`deploy/pedro/nginx/roborock-http.conf`](../deploy/pedro/nginx/roborock-http.conf):
+  replaces the existing Roborock HTTP site, preserving its certificate paths
+  and LAN allowlist. It uses `http://127.0.0.1:555`, preserves the original Host
+  and Origin, and removes garage-specific header rewriting and upstream TLS.
+- [`deploy/pedro/nginx/roborock-mqtt.conf`](../deploy/pedro/nginx/roborock-mqtt.conf):
+  a server block for an existing top-level `stream {}` context. It listens on
+  `192.168.84.2:8881` with the same certificates and forwards to the server's
+  plaintext MQTT proxy on `127.0.0.1:18881`.
+
+These are separate include contexts. Do not paste MQTT configuration into an
+HTTP site editor. An example main-config integration, **outside `http {}`**, is:
+
+```nginx
+stream {
+    include /etc/nginx/streams-enabled/*.conf;
+}
+```
+
+If `stream {}` already exists, add the include/server there rather than
+creating another stream block. The live module and include layout still need
+inspection before choosing the final installation path. The source checkout
+holds templates; Nginx's deployed configuration should use files under `/etc/nginx`.
+Back up existing Nginx configuration under the project's `backups/` folder,
+then run `sudo nginx -t` before reloading. No Nginx validation was run against
+Pedro's host by preparing these templates.
+
+The container is not configured or started yet, so a 502 from the new HTTP
+proxy is expected until its backend is running. Backend ports and
+`external_tls` mode must match this plan; the direct-TLS helper cannot be used
+to start this proxy arrangement.
+
 Run this as Pedro:
 
 ```bash
