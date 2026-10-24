@@ -12,6 +12,9 @@ Read this section first when resuming in a new chat.
   `SCHEDULE_SUPPORT` are for schedule support and potential upstream PRs.
 - Personal installers, Nginx templates and tests of those installers must stay
   under the Git-ignored `local-work/setup/` directory. Do not upload them again.
+  Exception explicitly authorized later: maintained certificate-renewal code
+  belongs in the private `pponce/ddns-dnsexit-custom` repository. Temporary
+  installation/account-recovery commands still do not belong in maintained code.
 - Provide terminal commands in one Bash `{ ... }` block, suitable for SSH, with
   functions and `return` for failures rather than exiting the interactive shell.
 - Development checkout: `/home/pedro/devProjects/local_roborock_server`.
@@ -205,7 +208,7 @@ Read this section first when resuming in a new chat.
   certificate/key/chain validation, Nginx configuration validation and graceful
   reload, plus expiry/failure monitoring. Personal changes stay local; do not
   publish installers, certificate files, credentials or host-specific hooks.
-- Live certificate-renewal inspection reported October 23 Pacific time:
+- Initial certificate-renewal inspection, before the local update, reported October 23 Pacific time:
   all four scripts under `/home/pedro/dynamicDnsScript` exactly match the
   reviewed repository versions. The live `requestCert.sh` has `renew_mode=0`,
   which selects `--force-renewal`. Root cron runs it at `0 3 * * *` (03:00 in
@@ -240,48 +243,52 @@ Read this section first when resuming in a new chat.
   Do not replace the existing generic Let's Encrypt files or use the previously
   suggested separate Nginx directory. Actalis's private Certbot state goes
   under `certs/actalis/`, isolated from the existing Let's Encrypt account.
-- A local-only setup block has been prepared for Pedro to run over SSH.
-  It installs `/home/pedro/dynamicDnsScript/local-roborock-cert/actalis.py`
-  and `run.sh`, excludes that folder in the certificate checkout's
-  `.gitignore`, patches the known request script to mode 1,
-  fixes the cleanup JSON comma, and appends the Actalis check to the existing
-  daily entrypoint. It does not add another cron job or change Nginx certificate
-  selection. Changed-script backups stay under the Roborock checkout's
-  `backups/`, with setup files/logs under its `local-work/`.
-  DNS validation is scoped to the dedicated Roborock TXT name; cleanup is
-  skipped if another value is observed. Certificate/chain/key checks precede
-  provider-specific deployment. A failed reload is retried on a later check.
-  Twelve offline checks passed, including temporary credentials-file removal,
-  absence of keys from command arguments, actual OpenSSL key validation,
-  installation idempotence, unknown-edit refusal, DNS/API failures,
-  preservation of Let's Encrypt files, and reload retry without forced issuance.
-  These tests do not establish successful live issuance or robot compatibility.
-  The first local installation has now completed; issuance failed before DNS
-  challenge setup with `Not enough quota`, after successful ACME account
-  registration. Pedro confirmed that the supplied EAB credentials came from
-  the one-year category and has replaced both .env values with the
-  **Domain Validation — 90 days** credentials. The account email is unchanged.
-  No certificate has yet been issued or selected in Nginx.
+- The first local Actalis installation completed, confirming `renew_mode=1`,
+  the cleanup-hook JSON comma fix, local helper installation, and the Actalis
+  call in the existing daily entrypoint. Its certificate request failed before
+  DNS challenge setup with `Not enough quota`, after successful ACME account
+  registration. Pedro confirmed he had used the one-year EAB credential pair.
+  He has replaced both .env values with **Domain Validation — 90 days** keys;
+  the account email is unchanged. No certificate issuance or Nginx selection
+  change has been confirmed.
   Setup log: `local-work/actalis-setup-yWCX6X0x.log`.
   Changed-script backup:
   `backups/2026-10-23-203033-certificate-scripts-t_s5mtqx/`.
-  Mode 1, the cleanup JSON fix, local helper installation, and the existing
-  daily entrypoint's Actalis invocation were confirmed by the installer output.
-- The next retry must use a fresh local Actalis ACME registration because EAB
-  values apply at registration; editing .env does not rebind an existing
-  cached account. A local-only `retry-actalis-90days.sh` SSH block was prepared.
-  It validates the corrected .env via the existing helper, takes its renewal
-  lock, refuses account reset if any Actalis certificate/renewal files exist,
-  and moves only `certs/actalis/accounts/` into a private backup directory
-  below the Roborock checkout's `backups/`. It then calls the existing local
-  `run.sh renew` helper. It does not unregister remote CA accounts, access
-  Let's Encrypt account state, edit .env, or change Nginx certificate selection.
-  Shell/Python syntax and four offline account-state checks passed.
-  The corrected-key retry and certificate issuance remain unconfirmed.
+- Pedro explicitly authorized pushing certificate automation to his **private**
+  [pponce/ddns-dnsexit-custom](https://github.com/pponce/ddns-dnsexit-custom)
+  repository so GitHub and the installed scripts can be kept in sync.
+  Main now contains commit
+  [be421a9](https://github.com/pponce/ddns-dnsexit-custom/commit/be421a9afebeaef56c7d966104675abf368fd534):
+  due-only daily renewal, the existing Let's Encrypt domains/deployment,
+  Actalis renewal/DNS hooks, corrected cleanup JSON, secret/certificate ignore
+  patterns, normal-operation documentation, and 13 offline tests.
+  The environment file and certificate files were not added. No certificate
+  helper code was published in the public Roborock repository.
+- The maintained helper at `local-roborock-cert/actalis.py` contains only
+  ordinary renewal and DNS-validation operations (`renew`, `add`, `delete`).
+  Pedro rejected installer patchers, account-reset commands, and other one-off
+  operations in either GitHub or the installed maintained scripts. The old
+  installer-specific `setup` command is removed from the published version.
+  Normal command:
+  `sudo bash /home/pedro/dynamicDnsScript/local-roborock-cert/run.sh renew`.
+  The existing 03:00 cron entry invokes this through `requestCert.sh`.
+- Pedro also declined a backup of the failed, unissued Actalis registration.
+  The previously prepared backup/reset block was superseded; do not use it.
+  A single SSH block was prepared to fetch the private certificate repository,
+  put only the known certificate-code paths at commit `be421a9`, fast-forward
+  the local branch, and run the 13 offline tests. It adjusts ownership only of
+  the previously root-installed helper directory/files so Git can maintain them.
+  The same block performs an **inline, unsaved, one-time** cleanup: validate the
+  current .env values, acquire the Actalis renewal lock, preserve accounts if
+  certificate/renewal files already exist, otherwise delete only the unused
+  `certs/actalis/accounts/` cache. It then runs the normal renewal helper.
+  No account backup is made and no remote CA account is unregistered.
+  The update method was tested to preserve unrelated working changes; inline
+  cleanup guards were tested with temporary account/certificate directories.
+  Local checkout update and corrected-key issuance are still awaiting Pedro's
+  report. Nginx still selects the existing Let's Encrypt certificate.
   Sources: [Actalis quota/account FAQ](https://guide.actalis.com/faq/SSL/ACME),
-  [90-day credential selection in OpenVPN's official integration guide](https://openvpn.net/as-docs/v3/tutorials/tutorial--acme-ssl-certificate-access-server/#issue-a-certificate-with-actalis).
-  After installation, rerun locally with
-  `sudo bash /home/pedro/dynamicDnsScript/local-roborock-cert/run.sh setup`.
+  [90-day credential selection in OpenVPN's official guide](https://openvpn.net/as-docs/v3/tutorials/tutorial--acme-ssl-certificate-access-server/#issue-a-certificate-with-actalis).
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
