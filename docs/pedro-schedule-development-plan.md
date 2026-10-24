@@ -31,11 +31,15 @@ Read this section first when resuming in a new chat.
   its stream directories/include. Nginx syntax passes and it listens on 443 and
   `192.168.84.2:8881`. Docker now publishes backends only on
   `127.0.0.1:555` and `127.0.0.1:18881`.
-- Both Nginx listeners still select the existing Let's Encrypt files,
-  `/etc/nginx/ssl/onefallday/fullchain.pem` and
-  `/etc/nginx/ssl/onefallday/privkey.pem`. Actalis issuance and deployment have
-  now succeeded, but switching the Roborock HTTPS/MQTT certificate directives
-  is the next step and has not yet been confirmed. Other websites retain Let's Encrypt.
+- Both Roborock Nginx listeners now select the Actalis files under
+  `/etc/nginx/ssl/onefallday/`:
+  `api-roborock.onefallday.com-actalis-fullchain.pem` and
+  `api-roborock.onefallday.com-actalis-privkey.pem`.
+  Pedro confirmed `nginx -t`, reload, and TLS 1.2 verification on 443 and 8881;
+  both handshakes verified the hostname/trust chain and matched the issued
+  certificate's SHA256 fingerprint. Verification exit status was 0.
+  These checks ran from the Linux host; Downtown's own connectivity/trust is
+  still unconfirmed. Other websites retain their Let's Encrypt bindings.
 - Startup succeeded October 24, 2026 around 00:30 UTC after the local terminal
   fix. The server container `roborock-local-server` is healthy; HTTPS `/admin`
   returned 200 and MQTT TLS on 8881 verified successfully using TLS 1.3.
@@ -247,7 +251,8 @@ Read this section first when resuming in a new chat.
   registration. Pedro confirmed he had used the one-year EAB credential pair.
   He replaced both .env values with **Domain Validation — 90 days** keys;
   the account email is unchanged. The subsequent corrected-key issuance
-  succeeded as recorded below; Nginx certificate selection still awaits a change.
+  succeeded as recorded below; the later Nginx certificate switch is also
+  confirmed in the current checkpoint.
   Setup log: `local-work/actalis-setup-yWCX6X0x.log`.
   Changed-script backup:
   `backups/2026-10-23-203033-certificate-scripts-t_s5mtqx/`.
@@ -309,10 +314,14 @@ Read this section first when resuming in a new chat.
   and the helper's isolated `certs/actalis/` state. Certbot's generic scheduled-task
   message does not independently verify a system timer covers this custom state.
   A future scheduled renewal has not yet been observed.
-  Nginx's **file deployment succeeded but certificate selection is unchanged**.
-  Next, change only the Roborock HTTPS site and MQTT stream certificate/key
-  directives to the Actalis filenames above, validate/reload Nginx, verify the
-  served certificate on 443/8881, and retry Downtown. Robot trust is unconfirmed.
+  Certificate selection was unchanged immediately after issuance. Pedro then
+  applied the provided full configurations to the existing Roborock HTTPS site
+  and MQTT stream, selecting the Actalis filenames above. Syntax validation,
+  reload and both live TLS 1.2/fingerprint checks succeeded with status 0.
+  No Docker configuration, robot pairing or Homebridge endpoint change was
+  reported with that verification. Next, refresh the dashboard for Downtown's
+  connection status; if still offline, retry its existing LocalRock onboarding.
+  Robot trust remains unconfirmed until Downtown actually connects.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
@@ -336,10 +345,13 @@ Read this section first when resuming in a new chat.
 1. The combined schedule/UI image is installed and healthy. Continue with
    Downtown's connection/TLS diagnostics; Wi-Fi provisioning succeeded but
    server onboarding still lacks a public key and connection confirmation.
-   The Actalis certificate is now issued and deployed. Select it in the Roborock
-   HTTPS/MQTT Nginx configuration, verify both frontends serve it, and retry
-   Downtown. Do not rerun the image updater, first-start helper or cloud import
-   merely to continue.
+   Actalis issuance, deployment and both Nginx frontend TLS 1.2 checks are
+   complete. Refresh Downtown's dashboard status first; if still disconnected,
+   retry onboarding in LocalRock against `https://api-roborock.onefallday.com`,
+   selecting the imported Downtown device. Observe query samples/public-key
+   recovery and actual connection. Use only a Wi-Fi reset if a new pairing
+   cycle is needed. Do not rerun the image updater, first-start helper or cloud
+   import merely to continue.
    Disconnected robots are expected until onboarding; imported names do not
    prove robot connectivity. The post-import runtime backup is already verified.
 2. Finish/cancel any active Homebridge pause/delay and restore the intended normal
