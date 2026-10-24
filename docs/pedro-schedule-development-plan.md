@@ -378,10 +378,23 @@ Read this section first when resuming in a new chat.
   packet headers for Downtown's IPv4 on TCP 443/8881 and 555 (to detect a
   wrong-port attempt), across host interfaces, with TCP flags visible.
   Save only the local text report under ignored `local-work/downtown-actalis-*/`.
-  This capture has been prepared but not yet reported as run. If traffic
-  reaches Nginx, inspect TLS/HTTP progress; if no matching traffic arrives,
-  inspect gateway-side DNS/flows/routing. Host capture cannot see traffic
-  between Downtown and the gateway or an external DNS server.
+  Pedro completed this capture during a LocalRock retry. It reported
+  **0 packets captured, 1 packet received by filter, 0 kernel drops**, with
+  command status 0 (the expected three-minute timeout was handled normally).
+  Report: `local-work/downtown-actalis-JR5Sz3lb/report.txt`.
+  No packet records were available to inspect; do not infer an Actalis rejection,
+  or claim this proves there was no robot traffic anywhere. The IPv4 filter
+  excludes a changed client address, IPv6, NAT-rewritten sources, other ports,
+  and traffic to other destinations. Host capture also cannot see DNS between
+  Downtown and the gateway or an external resolver.
+  Next, inspect Downtown's current online/IP state in UniFi and the gateway's
+  Insights > Flows for the already-completed pairing window, including all
+  destinations and allowed/blocked policies. Look for DNS destinations on 53,
+  HTTPS to `192.168.84.2:443`, and any public or unexpected destinations.
+  Flow listings show completed sessions and depend on gateway support/storage;
+  absence there is not conclusive. If Flows is unavailable or uninformative,
+  obtain the UniFi gateway model and use a gateway-side packet capture.
+  Avoid another identical Linux-only capture without new evidence.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
