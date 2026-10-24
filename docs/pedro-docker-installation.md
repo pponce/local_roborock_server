@@ -9,11 +9,14 @@ not an upstream installation guide. Schedule hardware validation is pending.
 
 Current checkpoint: Docker startup behind Nginx completed October 24 around
 00:30 UTC. The container is healthy, HTTPS returned 200, and MQTT TLS verified.
-Cloud import also completed and both robot names appear. Stages 1–2 below
-describe the completed setup. Continue with Stage 3's post-import runtime backup,
-schedule-count check and map/Homebridge records; onboarding remains pending.
-The local-only `backup-after-cloud-import.py` helper is prepared but has not yet
-been reported as run. See the recovery plan for the initial backup and log paths.
+Cloud import and the post-import runtime backup completed successfully. Downtown
+has 7 imported schedules and Uptown has 8, all enabled. Archive integrity and
+container health passed. Map/Homebridge records and onboarding remain pending.
+Pedro requested the separate dashboard redesign on this installation, then
+Downtown's certificate test. Use the combined `SCHEDULE_SUPPORT_UI_TEST` branch
+for that build; keep the UI PR and schedule PR independent. No additional
+backup/rollback image is requested for this UI update. See the recovery plan
+for the verified backup path and the latest deployment status.
 
 ## Stage 1: Docker, source checkout, and image
 

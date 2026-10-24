@@ -108,7 +108,9 @@ SSH session completed with status 0 and the detached server is healthy.
 The first-start helper is retained locally for reference. Do not rerun it now;
 use the deployed Compose service for normal operations. Cloud import completed
 and both names appear; neither robot has been moved. The post-import runtime
-backup, schedule-count check and map/Homebridge records are next. The old
+backup and schedule-count check passed (Downtown: 7, Uptown: 8; all enabled).
+Map/Homebridge records remain pending. The separate dashboard update uses the
+same Nginx configuration and certificate paths. The old
 interrupted SSH session was closed after the successful startup.
 
 The helper reuses the image recorded in `/opt/local_roborock_server/SOURCE_COMMIT`
