@@ -395,6 +395,25 @@ Read this section first when resuming in a new chat.
   absence there is not conclusive. If Flows is unavailable or uninformative,
   obtain the UniFi gateway model and use a gateway-side packet capture.
   Avoid another identical Linux-only capture without new evidence.
+- **Gateway confirmed and Flow history exhausted:** Pedro confirms Downtown is
+  currently online at `192.168.69.140`. The gateway is a **UDM Pro Max** named
+  Cantinflas. The first Flow screenshot still selected destination
+  `192.168.84.2`; Pedro removed that filter and reports no Downtown flows
+  newer than 14:25 today. This history does not establish the vacuum's current
+  DNS behavior or absence of traffic.
+  Pedro has the console SSH password; the supported console username is
+  `root`, reachable from Mint at `192.168.84.1`. Never collect that password.
+  A read-only four-minute gateway capture is prepared for execution from
+  Pedro's Mint SSH session. It runs tcpdump remotely over SSH, limits records
+  to IPv4 `192.168.69.140` (ARP/ICMP, DNS, NTP and TCP SYN/FIN/RST packets),
+  and streams the text report into the Linux checkout's ignored
+  `local-work/downtown-gateway-*/report.txt`. It includes DNS answers and
+  attempts to any destination, not only the local server. The command is
+  syntax-checked; gateway execution/output has not yet been reported.
+  It changes no DNS/firewall/Nginx settings and is not published as maintained
+  code. If root SSH is already open manually, distinguish that gateway prompt
+  from the `pedro@Mint-Machine` prompt before giving local-path commands.
+  [Official SSH instructions](https://help.ui.com/hc/en-us/articles/204909374-Connecting-to-UniFi-with-Debug-Tools-SSH).
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
