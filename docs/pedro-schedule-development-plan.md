@@ -537,6 +537,35 @@ Read this section first when resuming in a new chat.
   reports an error, collect the complete LocalRock status and targeted server
   diagnostics rather than changing certificates or repeating firewall checks.
   [Upstream onboarding expectations](https://python-roborock.github.io/local_roborock_server/onboarding/#what-to-expect).
+- **Public key recovered, final connection still pending (2026-10-24):**
+  Pedro's next cycle advanced to two samples with public key recovering.
+  Recovery then finished (two samples, public key ready), and he performed
+  the instructed final pairing cycle. Latest report: **four server samples,
+  public key ready, waiting/in_progress**, still not connected.
+  Public-key recovery is now complete; do not keep prescribing additional
+  cycles solely to collect more signatures. The sample increase shows more
+  bootstrap requests reached the backend, but does not establish successful
+  NC registration or MQTT connectivity.
+  Reviewed the exact deployed `a5a46600845f4b137e14e334ef733341b61e63e6`
+  status API, bootstrap routes, key handling and proxy configuration.
+  Prepared a read-only diagnostic to run in **pedro@Mint-Machine SSH, not the
+  UDM gateway**: execute Python inside the existing roborock-local-server
+  container, read the current admin status using a 60-second in-memory session
+  from its existing local session secret (loopback only; token never printed),
+  and emit only selected non-secret fields. These include listener/advertised
+  ports, trusted proxies, new-connections setting, service/MQTT status,
+  Downtown's completed/missing onboarding steps and key state. A bounded tail
+  of current/previous HTTP JSONL files supplies only timestamps, routes, peer
+  addresses, application response code/result type and sample-added flags.
+  Raw requests, signatures, keys, credentials and payloads are excluded.
+  The SSH-safe outer brace block saves the filtered report under
+  `local-work/downtown-post-key-XXXXXXXX/report.txt`, and creates no script
+  in public Git. It does not restart services or pairing. Syntax and fixture
+  checks verified expected fields and omission of planted secrets.
+  This diagnostic has been provided for the current pairing attempt; its
+  execution/output is still pending. Use it to distinguish region/NC response
+  progress, incorrect advertised ports, disabled onboarding, proxy correlation
+  or missing MQTT activity. Do not declare any of those causes proven yet.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
@@ -557,23 +586,19 @@ Read this section first when resuming in a new chat.
 
 ## Next steps
 
-1. The UniFi port mismatch is corrected per Pedro: IoT-to-Internal allows
-   destination TCP **443 and 8881** to the server. Two subsequent Downtown
-   pairing attempts produced no progress, then **one server sample**;
-   the robot is still disconnected and its current public-key state was not
-   supplied. This is the first reported onboarding request after the fix.
-   The deployed code needs at least two signature samples to recover the
-   vacuum's public key. Check the status: while collecting/missing, run one
-   more LocalRock Wi-Fi pairing cycle for the imported Downtown robot against
-   `https://api-roborock.onefallday.com`. Return the phone to normal Wi-Fi and
-   allow up to five minutes for progress. Wait if key recovery is running;
-   after the key is ready, another final cycle may be needed to connect.
-   If one more completed cycle remains at one sample or shows an error,
-   obtain the full status and targeted server diagnostics before more changes.
-   Keep the current Actalis setup for this test; MQTT/full connectivity is
-   still unverified. The schedule/UI image and prior host TLS checks are good.
-   Do not repeat cloud import, image installation, or firewall investigations
-   merely because one sample is insufficient. The post-import backup is verified.
+1. Downtown's public-key recovery has succeeded. After a further pairing
+   cycle Pedro reports **four samples, public key ready, waiting/in_progress**,
+   still not connected. The previous UniFi 555-to-443 correction is applied
+   per Pedro and bootstrap requests now reach the server.
+   Keep the current pairing attempt open and run the prepared filtered status/
+   HTTP-history diagnostic on **Mint**, not the gateway. Await the report from
+   `local-work/downtown-post-key-XXXXXXXX/report.txt`.
+   Inspect region/NC completion, advertised 443/8881 ports, trusted proxies,
+   new-connections setting, current service state and any MQTT activity.
+   More signature-collection cycles are not the next diagnostic: the key is ready.
+   Preserve the current Actalis setup and imported devices while identifying
+   the remaining connection stage. Full robot/MQTT connectivity and hardware
+   schedule tests remain pending; the post-import backup is already verified.
 2. Finish/cancel any active Homebridge pause/delay and restore the intended normal
    schedule settings before taking the migration snapshot.
 3. While both robots are still on cloud, record available maps, floors, no-go zones,
