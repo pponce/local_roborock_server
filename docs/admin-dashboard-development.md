@@ -33,8 +33,10 @@ from the last server response. Vacuum and session cards update in place so
 refreshes preserve focus and expanded details. Keep these properties when
 adding controls. Errors must remain visible and retryable.
 
-This interface does not add vacuum commands, onboarding operations or schedule
-APIs. Those features can be proposed independently against their own contracts.
+The first [schedule editor](admin-schedule-editor.md) adds authenticated admin
+adapters in `admin_schedules.py` over the existing schedule store. It edits only
+recurring timing and the server dispatch gate; native timer commands and the
+schedule execution engine remain separate. Existing job payloads are preserved.
 
 ## Validation
 

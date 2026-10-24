@@ -43,6 +43,12 @@ def register_standalone_admin_routes(
     supervisor: Any,
     project_support: dict[str, Any],
 ) -> None:
+    # The supervisor has initialized the shared backend imports before creating
+    # the app. Use those same modules/locks for dashboard schedule edits.
+    from .admin_schedules import register_schedule_routes
+
+    register_schedule_routes(app, supervisor)
+
     @app.get("/admin/assets/{asset_name}")
     async def admin_asset(asset_name: str) -> Response:
         media_type = _ADMIN_ASSETS.get(asset_name)

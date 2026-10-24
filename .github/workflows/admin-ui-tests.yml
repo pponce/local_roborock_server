@@ -2,12 +2,14 @@ name: Admin dashboard checks
 
 on:
   push:
-    branches: [ADMIN_DASHBOARD_REFRESH, SCHEDULE_SUPPORT_UI_TEST]
+    branches: [ADMIN_DASHBOARD_REFRESH, SCHEDULE_SUPPORT_UI_TEST, ADMIN_SCHEDULE_EDITOR]
   pull_request:
     paths:
       - src/roborock_local_server/standalone_admin.py
+      - src/roborock_local_server/admin_schedules.py
       - src/roborock_local_server/admin_ui/**
       - tests/test_admin_api.py
+      - tests/test_admin_schedules.py
       - tests/browser/**
       - .github/workflows/admin-ui-tests.yml
       - pyproject.toml

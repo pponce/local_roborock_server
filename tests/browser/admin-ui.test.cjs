@@ -20,6 +20,25 @@ function fixtures() {
     loggedIn: true,
     fail: new Set(),
     requests: [],
+    scheduleConflict: false,
+    schedules: {
+      supported: true, generated_at: "2026-10-24T16:00:00Z", server_timezone: "America/Los_Angeles",
+      devices: [
+        {duid: "sample-downstairs", name: "Downstairs", model: "roborock.vacuum.a15", connected: true, schedules: [
+          {id: 42, revision: "revision-42", cron: "30 9 * * 1-5", timeZoneId: "America/Los_Angeles", enabled: true, repeated: true,
+            next_run_at: "2026-10-26T16:30:00Z", native_timer_name: "native-kitchen", native_timer_state: "not_checked", editable: true,
+            settings: {map_index: 0, segments: "16,17", fan_power: 102, clean_order_mode: 1}},
+          {id: 43, revision: "revision-43", cron: "0,30 8-9 * * *", timeZoneId: "Europe/Berlin", enabled: false, repeated: true,
+            next_run_at: null, native_timer_name: null, native_timer_state: null, settings: {}, editable: true},
+          {id: 44, revision: "revision-44", cron: "0 10 26 10 *", timeZoneId: "America/Los_Angeles", enabled: true, repeated: false,
+            next_run_at: "2026-10-26T17:00:00Z", native_timer_name: "native-once", native_timer_state: "not_checked", settings: {}, editable: false},
+        ]},
+        {duid: "sample-upstairs", name: "Upstairs", model: "roborock.vacuum.a27", connected: false, schedules: [
+          {id: 42, revision: "upstairs-revision-42", cron: "0 11 * * *", timeZoneId: "America/Los_Angeles", enabled: true, repeated: true,
+            next_run_at: "2026-10-24T18:00:00Z", native_timer_name: "native-office", native_timer_state: "not_checked", settings: {map_index: 1}, editable: true},
+        ]},
+      ],
+    },
     auth: {
       new_connections_enabled: true, admin_session_secret: "fictional-sync-secret",
       protocol_session_count: 1, pending_device_mqtt_recovery: [],
@@ -71,9 +90,20 @@ async function serve(req, res) {
     return reply({ok: true});
   }
   if (!state.loggedIn) return reply({error: "Authentication required"}, 401);
+  const schedulePath = /^\/admin\/api\/schedules\/([^/]+)\/([^/]+)$/.exec(url.pathname);
+  if (schedulePath && req.method === "PATCH") {
+    const device = state.schedules.devices.find((item) => item.duid === decodeURIComponent(schedulePath[1]));
+    const job = device?.schedules.find((item) => String(item.id) === decodeURIComponent(schedulePath[2]));
+    if (!job) return reply({error: "Schedule not found"}, 404);
+    if (state.scheduleConflict || body.revision !== job.revision) return reply({error: "Schedule changed. Reload the saved values before editing."}, 409);
+    for (const key of ["cron", "timeZoneId", "enabled"]) if (Object.hasOwn(body, key)) job[key] = body[key];
+    job.revision += "-saved";
+    return reply({schedule: job});
+  }
   switch (url.pathname) {
     case "/admin/api/status": return reply({health: state.health});
     case "/admin/api/vacuums": return reply({vacuums: state.vacuums});
+    case "/admin/api/schedules": return reply(state.schedules);
     case "/admin/api/auth":
       if (req.method === "POST") state.auth.new_connections_enabled = body.new_connections_enabled;
       return reply(state.auth);
@@ -244,6 +274,7 @@ test("untrusted vacuum names render as text", async () => {
 
 test("empty inventory provides an import action", async () => {
   state.vacuums = [];
+  state.schedules.devices = [];
   state.auth.protocol_sessions = [];
   state.auth.protocol_session_count = 0;
   await ready();
@@ -262,4 +293,120 @@ test("mobile, tablet and dark layouts fit the viewport", async () => {
   await page.emulateMedia({colorScheme: "dark", reducedMotion: "reduce"});
   await noOverflow();
   await page.screenshot({path: path.join(outputDir, "dashboard-dark.png"), fullPage: true});
+});
+
+function scheduleCard(id = 42, duid = "sample-downstairs") {
+  return page.locator(`.schedule-card[data-device-id="${duid}"][data-job-id="${id}"]`);
+}
+
+async function openSchedule(id = 42) {
+  const card = scheduleCard(id);
+  await card.locator(".schedule-editor > summary").click();
+  return card;
+}
+
+test("schedule list includes native jobs and distinguishes server permission from unchecked robot state", async () => {
+  await ready();
+  await page.waitForFunction(() => document.getElementById("scheduleList").getAttribute("aria-busy") === "false");
+  assert.equal(await page.locator("#scheduleDevice").inputValue(), "sample-downstairs");
+  assert.equal(await page.locator(".schedule-card:visible").count(), 3);
+  assert.match(await scheduleCard().locator('[data-field="next"]').textContent(), /America\/Los_Angeles/);
+  assert.equal(await scheduleCard().locator('[data-field="enabledBadge"]').textContent(), "Server enabled");
+  assert.match(await scheduleCard().locator('[data-field="timerState"]').textContent(), /not checked/);
+  assert.equal(await scheduleCard(44).locator(".schedule-editor").isVisible(), false);
+  await page.locator("#scheduleDevice").selectOption("sample-upstairs");
+  assert.equal(await page.locator(".schedule-card:visible").count(), 1);
+  assert.match(await page.locator("#scheduleSummary").textContent(), /Not connected to this server/);
+});
+
+test("schedule edits survive polling and save only changed allowed fields", async () => {
+  await ready();
+  const card = await openSchedule();
+  const originalSettings = structuredClone(state.schedules.devices[0].schedules[0].settings);
+  await card.getByLabel("Time", {exact: true}).fill("10:15");
+  await card.getByLabel("Fri", {exact: true}).uncheck();
+  await card.getByLabel("Time", {exact: true}).focus();
+  await page.waitForTimeout(2300);
+  assert.equal(await card.getByLabel("Time", {exact: true}).inputValue(), "10:15");
+  assert.equal(await card.locator(".schedule-editor").getAttribute("open"), "");
+  assert.equal(await page.evaluate(() => document.activeElement.name), "time");
+  await card.getByRole("button", {name: "Save schedule"}).click();
+  await page.waitForFunction(() => document.querySelector('.schedule-card[data-device-id="sample-downstairs"][data-job-id="42"] [data-field="result"]').textContent.includes("Schedule saved"));
+  const request = state.requests.find((item) => item.method === "PATCH");
+  assert.deepEqual(request.body, {revision: "revision-42", cron: "15 10 * * 1,2,3,4"});
+  assert.deepEqual(state.schedules.devices[0].schedules[0].settings, originalSettings);
+  assert.equal(state.schedules.devices[0].schedules[0].native_timer_name, "native-kitchen");
+  assert.equal(await card.getByRole("button", {name: "Save schedule"}).isDisabled(), true);
+});
+
+test("schedule failures preserve edits and revision conflicts require a fresh reload", async () => {
+  await ready();
+  const card = await openSchedule();
+  await card.getByLabel("Time", {exact: true}).fill("10:45");
+  state.fail.add("/admin/api/schedules/sample-downstairs/42");
+  await card.getByRole("button", {name: "Save schedule"}).click();
+  await page.waitForFunction(() => document.querySelector('.schedule-card[data-device-id="sample-downstairs"][data-job-id="42"] [data-field="result"]').textContent.includes("failure"));
+  assert.equal(await card.getByLabel("Time", {exact: true}).inputValue(), "10:45");
+  assert.equal(await card.getByRole("button", {name: "Save schedule"}).isEnabled(), true);
+  state.fail.clear();
+  state.scheduleConflict = true;
+  await card.getByRole("button", {name: "Save schedule"}).click();
+  await page.waitForFunction(() => document.querySelector('.schedule-card[data-device-id="sample-downstairs"][data-job-id="42"] [data-field="result"]').textContent.includes("Schedule changed"));
+  assert.equal(await card.getByRole("button", {name: "Save schedule"}).isDisabled(), true);
+  assert.equal(await card.getByLabel("Time", {exact: true}).inputValue(), "10:45");
+  state.schedules.devices[0].schedules[0].cron = "20 12 * * 1-5";
+  state.schedules.devices[0].schedules[0].revision = "remote-revision";
+  state.scheduleConflict = false;
+  await card.getByRole("button", {name: "Discard edits and reload"}).click();
+  await page.waitForFunction(() => document.querySelector('.schedule-card[data-device-id="sample-downstairs"][data-job-id="42"] input[name="time"]').value === "12:20");
+  assert.equal(await card.getByRole("button", {name: "Save schedule"}).isDisabled(), true);
+});
+
+test("background schedule changes never overwrite an unsaved form", async () => {
+  await ready();
+  const card = await openSchedule();
+  await card.getByLabel("Time", {exact: true}).fill("11:10");
+  state.schedules.devices[0].schedules[0].cron = "0 14 * * 1-5";
+  state.schedules.devices[0].schedules[0].revision = "changed-by-app";
+  await page.locator("#refreshSchedules").click();
+  await page.waitForFunction(() => document.querySelector('.schedule-card[data-device-id="sample-downstairs"][data-job-id="42"] [data-field="editStatus"]').textContent.includes("Changed elsewhere"));
+  assert.equal(await card.getByLabel("Time", {exact: true}).inputValue(), "11:10");
+  assert.equal(await card.getByRole("button", {name: "Save schedule"}).isDisabled(), true);
+});
+
+test("advanced recurrence survives unrelated permission edits and unsupported API leaves dashboard usable", async () => {
+  await ready();
+  const card = await openSchedule(43);
+  assert.equal(await card.getByLabel("Recurrence format").inputValue(), "cron");
+  assert.equal(await card.getByLabel("Timezone", {exact: true}).inputValue(), "Europe/Berlin");
+  await card.getByLabel("Allow this server to run this schedule").check();
+  await card.getByRole("button", {name: "Save schedule"}).click();
+  await page.waitForFunction(() => document.querySelector('.schedule-card[data-job-id="43"] [data-field="result"]').textContent.includes("Schedule saved"));
+  assert.deepEqual(state.requests.find((item) => item.method === "PATCH").body, {revision: "revision-43", enabled: true});
+  assert.equal(state.schedules.devices[0].schedules[1].cron, "0,30 8-9 * * *");
+  state.fail.add("/admin/api/schedules");
+  await refresh();
+  assert.equal(await page.locator("#scheduleError").isVisible(), true);
+  assert.equal(await page.locator("#overall").textContent(), "Healthy");
+  assert.equal(await page.locator("#pageMessage").isVisible(), false);
+  state.fail.clear();
+  await page.locator("#refreshSchedules").click();
+  await page.waitForFunction(() => document.getElementById("scheduleError").hidden);
+});
+
+test("schedule text is inert and the expanded editor fits a small mobile viewport", async () => {
+  state.schedules.devices[0].name = '<img src=x onerror="window.injected=true">';
+  state.schedules.devices[0].schedules[0].native_timer_name = '<img src=x onerror="window.injected=true">';
+  state.schedules.devices[0].schedules[0].settings.segments = '<script>window.injected=true</script>';
+  await ready();
+  const card = await openSchedule();
+  await card.locator(".technical > summary").click();
+  assert.equal(await page.locator("#schedules img").count(), 0);
+  assert.equal(await page.evaluate(() => window.injected), undefined);
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({width, height: 950});
+    await noOverflow();
+  }
+  await page.locator("#schedules").scrollIntoViewIfNeeded();
+  await page.screenshot({path: path.join(outputDir, "schedule-editor-mobile.png"), fullPage: true});
 });

@@ -2,7 +2,7 @@ name: Schedule support checks
 
 on:
   push:
-    branches: [SCHEDULE_SUPPORT, SCHEDULE_SUPPORT_UI_TEST]
+    branches: [SCHEDULE_SUPPORT, SCHEDULE_SUPPORT_UI_TEST, ADMIN_SCHEDULE_EDITOR]
   workflow_dispatch:
 
 permissions:
