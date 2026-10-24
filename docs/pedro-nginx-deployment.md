@@ -109,13 +109,15 @@ The first-start helper is retained locally for reference. Do not rerun it now;
 use the deployed Compose service for normal operations. Cloud import completed
 and both names appear; neither robot has been moved. The post-import runtime
 backup and schedule-count check passed (Downtown: 7, Uptown: 8; all enabled).
-Map/Homebridge records remain pending. The separate dashboard update uses the
+Map/Homebridge records remain pending. The separate dashboard update completed
+successfully: `local/roborock-server:schedule-ui` at `a5a4660` is healthy, with the
 same Nginx configuration and certificate paths. The old
 interrupted SSH session was closed after the successful startup.
 
-The helper reuses the image recorded in `/opt/local_roborock_server/SOURCE_COMMIT`
-(currently `local/roborock-server:schedule-7e07021b6f51`). Pulling deployment
-scripts does not require rebuilding this image. It:
+At first startup, the helper reused `local/roborock-server:schedule-7e07021b6f51`.
+The current image is `local/roborock-server:schedule-ui`; its full source commit
+is recorded in `/opt/local_roborock_server/SOURCE_COMMIT`. The following describes
+the historical first-start process, which should not be rerun to continue. It:
 
 1. Validates the existing runtime Compose file, requiring loopback-only backend
    bindings and the expected image, network, mounts and HTTP health check.

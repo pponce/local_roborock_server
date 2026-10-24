@@ -12,11 +12,14 @@ Current checkpoint: Docker startup behind Nginx completed October 24 around
 Cloud import and the post-import runtime backup completed successfully. Downtown
 has 7 imported schedules and Uptown has 8, all enabled. Archive integrity and
 container health passed. Map/Homebridge records and onboarding remain pending.
-Pedro requested the separate dashboard redesign on this installation, then
-Downtown's certificate test. Use the combined `SCHEDULE_SUPPORT_UI_TEST` branch
-for that build; keep the UI PR and schedule PR independent. No additional
-backup/rollback image is requested for this UI update. See the recovery plan
-for the verified backup path and the latest deployment status.
+The dashboard update is now confirmed: `local/roborock-server:schedule-ui` from
+`a5a46600845f4b137e14e334ef733341b61e63e6` (`SCHEDULE_SUPPORT_UI_TEST`) is healthy,
+and the update helper returned status 0. Existing data/configuration and Nginx
+were retained. The UI PR and schedule PR remain independent; upstream submissions
+wait for hardware validation. No extra rollback image was requested for this UI
+update. Pedro offered LocalRock as an easier alternative after selecting his
+MacBook Pro; use phone onboarding for Downtown first, with the Mac as a fallback.
+See the recovery plan for the verified backup path and current onboarding status.
 
 ## Stage 1: Docker, source checkout, and image
 
