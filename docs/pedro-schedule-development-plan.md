@@ -414,6 +414,38 @@ Read this section first when resuming in a new chat.
   code. If root SSH is already open manually, distinguish that gateway prompt
   from the `pedro@Mint-Machine` prompt before giving local-path commands.
   [Official SSH instructions](https://help.ui.com/hc/en-us/articles/204909374-Connecting-to-UniFi-with-Debug-Tools-SSH).
+- **Gateway capture received (2026-10-23, 22:12–22:16 America/Los_Angeles):**
+  Pedro ran the console-only capture directly in his existing root SSH session
+  on the UDM Pro Max and attached its output. The earlier Mint-to-gateway
+  logging wrapper was not used; no new Linux report path is established.
+  Downtown is reachable on `br69` at `192.168.69.140`.
+  The capture contains 24 DNS requests on br69 for
+  `api-roborock.onefallday.com/.roborock.com` and 24 for that name plus
+  `.home.arpa`, all returning NXDOMAIN. Crucially, at **22:13:14.146**
+  Downtown then asks its gateway DNS `192.168.69.1` for the correct
+  `api-roborock.onefallday.com` and receives **192.168.84.2**.
+  Do not diagnose the earlier slash/suffix lookups as the current blocker or
+  change LocalRock's address based only on them. The upstream onboarding
+  technique deliberately inserts a slash into token.r; the complete capture
+  demonstrates that the robot subsequently obtains the correct server address.
+  At **22:13:14.157**, Downtown sends a TCP SYN from source port **49992**
+  to **192.168.84.2:443**, retransmitting at 22:13:15, :17 and :21.
+  The capture shows these on ingress `eth10.69`/`br69`, with no visible
+  server-side egress, SYN-ACK, RST or ICMP error. Repeated interface copies are
+  the same packets, not independent connection attempts.
+  Totals: 293 captured, 310 received by filter, zero kernel drops; status 124
+  is the normal timeout. Raw-interface decoder warnings also occur, but the
+  VLAN and bridge copies decode correctly; they do not prove malformed traffic.
+  **Working diagnosis:** TCP forwarding/routing/filtering is the immediate
+  investigation, before TLS. A gateway firewall drop is a strong candidate,
+  not yet a proven specific rule; capture/offload visibility has limits.
+  Next, read the gateway route to 192.168.84.2 in Downtown's ingress context,
+  selected generated firewall entries and relevant IP/port set members.
+  The screenshot's hidden destination port group remains unverified: it must
+  allow TCP **443 and 8881**, with source port Any and new connections allowed.
+  The existing allow must be enabled and match the actual server network's zone.
+  Do not repeat the same DNS settings checks, change certificates, or open
+  all IoT traffic to Internal based on this capture.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
