@@ -1,5 +1,9 @@
 # Pedro's Nginx deployment plan
 
+Updated October 24, 2026 (UTC). Public notes are permitted; personal executable
+helpers, templates and their tests are local-only under the ignored
+`local-work/setup/` directory. Preserve them before pulling the repository cleanup.
+
 Selected October 23, 2026, before the Roborock service's first startup. Pedro
 prefers to see and manage certificate bindings in Nginx. Docker and the schedule
 image are installed; the vacuums and Homebridge remain on Roborock cloud.
@@ -51,25 +55,20 @@ The MQTT listener should likewise be LAN-restricted. Retain other Nginx sites.
 
 ## Nginx configuration
 
-The prepared configuration files are:
+The personal configuration files belong locally at:
 
-- [`deploy/pedro/nginx/roborock-http.conf`](../deploy/pedro/nginx/roborock-http.conf):
+- `local-work/setup/deploy/pedro/nginx/roborock-http.conf`:
   replaces the existing Roborock HTTP site, preserving its certificate paths
   and LAN allowlist. It uses `http://127.0.0.1:555`, preserves the original Host
   and Origin, and removes garage-specific header rewriting and upstream TLS.
-- [`deploy/pedro/nginx/roborock-mqtt.conf`](../deploy/pedro/nginx/roborock-mqtt.conf):
+- `local-work/setup/deploy/pedro/nginx/roborock-mqtt.conf`:
   a server block for an existing top-level `stream {}` context. It listens on
   `192.168.84.2:8881` with the same certificates and forwards to the server's
   plaintext MQTT proxy on `127.0.0.1:18881`.
 
-These are separate include contexts. Do not paste MQTT configuration into an
-HTTP site editor. An example main-config integration, **outside `http {}`**, is:
-
-```nginx
-stream {
-    include /etc/nginx/streams-enabled/*.conf;
-}
-```
+These are separate include contexts. The MQTT file belongs in the top-level
+stream context, outside the HTTP context. Its enabled-directory include was
+created through the Nginx UI self-check repair.
 
 If `stream {}` already exists, add the include/server there rather than
 creating another stream block. Pedro's inspection confirmed the stream module
@@ -88,7 +87,9 @@ to start this proxy arrangement.
 Run this as Pedro:
 
 ```bash
-bash /home/pedro/devProjects/local_roborock_server/scripts/inspect-pedro-nginx.sh
+{
+  bash /home/pedro/devProjects/local_roborock_server/local-work/setup/scripts/inspect-pedro-nginx.sh
+}
 ```
 
 It checks Nginx syntax, build/modules, selected structural directives, public
@@ -98,12 +99,13 @@ and changes no services. Return the `START COPY HERE` / `END COPY HERE` section.
 
 ## First Docker startup
 
-Run as Pedro, without sudo before bash:
+After preserving the local files and applying the local Compose compatibility fix,
+run as Pedro, without sudo before bash. Startup is still pending on his host:
 
 ```bash
-cd /home/pedro/devProjects/local_roborock_server &&
-git pull --ff-only origin SCHEDULE_SUPPORT &&
-bash scripts/configure-pedro-nginx-docker.sh
+{
+  bash /home/pedro/devProjects/local_roborock_server/local-work/setup/scripts/configure-pedro-nginx-docker.sh
+}
 ```
 
 The helper reuses the image recorded in `/opt/local_roborock_server/SOURCE_COMMIT`

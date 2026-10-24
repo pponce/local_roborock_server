@@ -1,11 +1,15 @@
 # Pedro's Docker installation and first robot test
 
+Updated October 24, 2026 (UTC). Public notes are permitted; personal executable
+helpers, templates and their tests are local-only under the ignored
+`local-work/setup/` directory. Preserve them before pulling the repository cleanup.
+
 This is the staged installation for Pedro's `SCHEDULE_SUPPORT` branch. It is
 not an upstream installation guide. Schedule hardware validation is pending.
 
 ## Stage 1: Docker, source checkout, and image
 
-Run `scripts/install-pedro-docker.sh` with Bash as `pedro`, not as root. It
+Run `local-work/setup/scripts/install-pedro-docker.sh` with Bash as `pedro`, not as root. It
 requests sudo only for host packages, Docker, and creating the runtime folder.
 It follows Docker's [Ubuntu apt repository installation](https://docs.docker.com/engine/install/ubuntu/),
 using `UBUNTU_CODENAME` on Ubuntu-based Linux Mint. Docker does not officially
@@ -63,12 +67,11 @@ not modified by this installation.
 **Selected approach: Nginx owns HTTPS and MQTT TLS.** Pedro wants certificates
 visible in his existing Nginx setup and updated through his existing deployment
 hook. Follow [the Nginx deployment plan](pedro-nginx-deployment.md) and run
-`scripts/configure-pedro-nginx-docker.sh` after configuring the Nginx listeners.
+`local-work/setup/scripts/configure-pedro-nginx-docker.sh` after configuring the Nginx listeners.
 The helper verifies both forwarding paths before writing the runtime configuration
-and starting the server. The direct-TLS helper below is an alternative,
-not the selected startup path; it copies certificates only once.
+and starting the server. Use that helper for this Nginx deployment.
 
-Prerequisites for the selected proxy setup or the direct-TLS alternative:
+Prerequisites for the selected proxy setup:
 
 - Reserve the Linux host's LAN address in UniFi.
 - Use `api-roborock.onefallday.com`. Local DNS
@@ -89,8 +92,7 @@ Prerequisites for the selected proxy setup or the direct-TLS alternative:
   `/etc/nginx/ssl/onefallday/` certificate files, which the deployment hook
   already updates before reloading Nginx. Verify the live paths/hook first.
   The selected `external_tls` mode needs no certificate copy or DNSExit API
-  credentials inside Docker. The direct-TLS alternative below instead copies
-  certificates into the runtime and would need a separate renewal deploy step.
+  credentials inside Docker.
 - Plan the camera hostname before pairing Uptown. The firmware-specific input
   must fit the [camera guide's](camera.md) 15-character rule, including a port
   and trailing slash. A hostname adequate for schedules can be too long for
@@ -128,95 +130,91 @@ The actual certificate is Let's Encrypt YR2, covers `onefallday.com` and
 now. S7 trust compatibility is still unresolved; a successful browser or
 Linux TLS test does not establish that Downtown will trust this chain.
 
-### Alternative: direct TLS in the existing image (not selected)
+## Stage 3: Backups and cloud import
 
-Update this branch with `git pull --ff-only origin SCHEDULE_SUPPORT` from a
-clean `SCHEDULE_SUPPORT` checkout. Then run the new helper from an interactive
-terminal as `pedro` (without sudo before bash):
+Complete startup and confirm the dashboard is reachable before onboarding.
+Keep both robots on cloud while recording their current configuration.
 
-```bash
-bash /home/pedro/devProjects/local_roborock_server/scripts/configure-pedro-docker.sh
-```
+1. In the Roborock app, record firmware, all maps/floors, room names, no-go zones,
+   schedules and their enabled states, room order, suction, mop/water settings,
+   and routines. Use the app's map-backup option if available. Save downloadable
+   exports, screenshots and the Homebridge schedule capture under the checkout's
+   ignored `backups/<timestamp>/downtown/` and `uptown/` directories.
+2. App-native map backups may stay on the robot/cloud. A screenshot or raw map
+   download is a record, not a verified restorable map backup. The cloud import
+   below does not download a restorable map image or recreate native robot timers.
+3. Back up Homebridge through its UI and store the downloaded backup under the
+   same dated backup directory. Preserve Matter/HomeKit pairing state.
+4. Open `https://api-roborock.onefallday.com/admin`. In cloud import, enter the
+   existing Roborock cloud email, select **Send code**, enter the emailed code,
+   and select **Fetch data**. This code is different from the local six-digit PIN.
+5. The import fetches device/home/room records, scenes/routines, device details,
+   and device schedule jobs. It writes the working inventory and a full cloud
+   snapshot under `/opt/local_roborock_server/data/runtime/` as
+   `web_api_inventory.json` and `web_api_inventory_full_snapshot.json`.
+   These files contain private data and stay off GitHub.
+6. Verify both robot names and each schedule's time, days, timezone and settings.
+   Import is not proof that native timer IDs, maps or room IDs survived onboarding.
+   Re-importing later replaces local schedule definitions; back up edits first.
+7. Stop the Compose service, archive the complete `/opt/local_roborock_server/`
+   runtime into the dated `backups/<timestamp>/server/` folder, record its Docker
+   image ID, then start it again. This provides a consistent pre-pairing copy.
 
-This first-start helper:
+## Stage 4: Onboard one robot, then the second
 
-1. Checks host DNS, the IP address, available ports, and the existing image's
-   source revision. It uses the runtime's `SOURCE_COMMIT`, so pulling these
-   helper changes does **not** require rebuilding the already-installed image.
-   Do not rerun the Stage 1 installer just to obtain this configuration helper.
-2. Copies the existing certificate and key into runtime `data/certs/` with
-   private permissions, verifies expiry/hostname and key matching, and leaves
-   different existing destination files untouched for review.
-3. Runs `scripts/pedro_runtime_config.py` inside the built image with networking
-   disabled. It asks for a local admin password (twice), local login email,
-   and six-digit local PIN (twice). Passwords/PINs are hashed in `config.toml`.
-   The email may be the cloud-account email, but the PIN is chosen locally;
-   no cloud verification email is sent by this step.
-4. Sets the known hostname, ports, embedded broker, provided certificates,
-   `America/Los_Angeles` timezone, and Compose publishing on `192.168.84.2`.
-   An existing matching configuration is reused without changing credentials;
-   different configuration is preserved and stops the helper.
-5. Makes a private runtime archive under
-   `backups/YYYY-MM-DD-HHMMSS-<unique>/server/` before first startup. This is a
-   **server configuration backup**, not a robot/map/schedule backup. Its
-   sibling `downtown/` and `uptown/` folders remain empty until exports occur.
-6. Starts Compose using the existing image, waits for health, and verifies
-   HTTPS and MQTT TLS certificates from the host. It prints a report between
-   `START COPY HERE` and `END COPY HERE`. Setup logs stay in `local-work/`.
+The current Homebridge platform instance has one server URL for all devices.
+Pedro agreed to test one robot on the local server first, leaving Homebridge on
+cloud temporarily; the moved robot will not have a functioning cloud connection
+in that instance. Once both robots work locally, switch Homebridge once. Do not
+create duplicate bridge instances or remove/re-pair Matter accessories by default.
 
-Open `https://api-roborock.onefallday.com:555/admin` and log in with the local
-admin password. Neither vacuum is moved from cloud by running this helper.
-Robot backups, cloud import, and pairing are subsequent steps. TURN is disabled.
-Certificate copying is initial setup only: renewal/deploy-hook integration
-still needs to be installed before leaving the server running long term.
+With the current Let's Encrypt chain, Uptown S7 MaxV has the stronger compatibility
+report. Downtown S7 has a reported Let's Encrypt failure; successful host/browser
+TLS does not resolve that. Validate or arrange a compatible chain before moving
+Downtown. Earlier plans to start with Downtown are superseded by this ordering.
 
-The helper refuses to change an existing service container. If startup or
-endpoint verification fails, the container may still be running; report the
-error and inspect it before retrying. Do not delete runtime data to rerun setup.
+Use a second computer with Wi-Fi while the Linux server stays connected to the
+LAN. Use the project's [onboarding guide](onboarding.md), selecting the imported
+robot and the **explicit endpoint `api-roborock.onefallday.com:443`**. The CLI
+otherwise defaults to 555. Set `America/Los_Angeles`, use the IoT 2.4 GHz Wi-Fi,
+and perform a **Wi-Fi reset only**, not a factory reset. Follow the guided AP
+connection/reconnection and key-recovery steps; multiple cycles can be required.
+A phone running LocalRock is another documented onboarding option.
 
-## Stage 3: Backups, import, and one robot
+After the first robot connects, check status, map/room access, ordinary start/dock,
+and native timer entries against the captured jobs. Then test one recurring
+schedule, correct rooms/settings and disabled state. Repeat for the second robot
+before moving Homebridge. Do not assume maps or native timers survived solely
+because the cloud inventory imported successfully.
 
-Before resetting any robot's Wi-Fi:
+## Stage 5: Switch Homebridge 3.40.0 once
 
-1. Record firmware versions, maps, rooms, schedules, routine settings, and
-   current enable/disable states while cloud access still works. Use available
-   app map-backup features as well as exports and screenshots. A screenshot
-   or raw map capture is not proven to be a restorable map backup.
-2. Store every backup/export we create under
-   `/home/pedro/devProjects/local_roborock_server/backups/YYYY-MM-DD-HHMMSS/`,
-   grouped into `downtown/`, `uptown/`, and `server/` as needed. Keep schedule
-   captures and restore notes here too. App-native map backups may remain in
-   the robot/cloud and cannot necessarily be moved into this folder.
-3. In the local dashboard, use cloud import: enter the existing Roborock email,
-   send the verification code, and fetch the inventory and schedules. Review
-   the imported jobs before any pairing. Re-importing later replaces local
-   job definitions; back up local state first.
-4. Make a consistent server backup after import: stop the Compose service,
-   archive the whole runtime directory (including configuration, secrets,
-   data, Compose files, and source commit) into that dated `server/` folder,
-   then start the service again. Record the Docker image ID for restoration.
+Verified against Pedro's `SCHEDULE_PROTOCOL_CAPTURE` branch on October 24:
+`package.json` reports 3.40.0 and the branch retains pause/delay and capture settings.
+Its [settings UI](https://github.com/pponce/homebridge-roborock-matter-plus/blob/SCHEDULE_PROTOCOL_CAPTURE/homebridge-ui/public/index.js)
+and [schema](https://github.com/pponce/homebridge-roborock-matter-plus/blob/SCHEDULE_PROTOCOL_CAPTURE/config.schema.json)
+support the following flow:
 
-Start with **Downtown Rock (S7, 192.168.69.140)** after its certificate path is
-ready. Keep **Uptown Rock (S7 MaxV, 192.168.69.178)** on cloud until the first
-robot passes schedule tests. This does not imply one phone app session can
-control both backends simultaneously.
+1. Preserve the Homebridge backup and finish/cancel any active pause or delay so
+   the saved original schedule state is not left pending across the transition.
+2. In this plugin's settings, log out of its saved cloud login to unlock Region.
+   This clears the plugin login, not the Roborock account or app session.
+3. Select **Custom server** in Region and enter
+   `https://api-roborock.onefallday.com` in **Custom Server URL** (`serverURL`).
+   Do not append `/admin` or use backend port 555. The local login response
+   supplies the MQTT endpoint; there is no separate MQTT port to enter here.
+4. Enter the local protocol-login email and use the chosen six-digit local PIN
+   in the verification-code login field. Do not use the dashboard password or
+   request a new cloud email code for this local login.
+5. Save and restart the Roborock child bridge. Keep existing pairing/state and
+   schedule/pause/delay settings. Confirm both robots, room IDs and schedules,
+   then test a toggle, delay and cancel/restore round trip.
 
-Use a second computer that can join the robot's temporary Wi-Fi hotspot while
-the Linux server stays on the LAN. Following [onboarding](onboarding.md), run
-`start_onboarding.py` with the selected server hostname/port and
-`--timezone America/Los_Angeles`. The second computer needs Python 3.11+ and
-`uv`. Copy the onboarding scripts together or use a checkout on that computer.
-Reset **Wi-Fi only**, select the correct imported robot, and follow the guided
-pairing/reconnection steps. Some robots require more than one pairing cycle.
+The plugin routes all devices in this instance through its selected server.
+Switching Region back later does not move a robot: returning a robot to cloud
+requires cloud onboarding again. The real Roborock account is not deleted.
 
-Verify status, map access, ordinary control, and then the recurring-schedule
-sequence in [schedules.md](schedules.md). Homebridge must also be configured
-for the local server's API and login; cloud capture mode alone does not switch
-its backend. Keep pause/delay policy in Homebridge. Validate its configuration
-before changing the live child bridge, especially while the other robot is
-still on cloud.
-
-The [official app redirection](roborock_app.md) and
-[Uptown camera/video tests](camera.md) follow the basic server and schedule
-tests. Returning to cloud requires restoring the app's cloud session and
-re-pairing the robot through that app; stopping Docker does not switch it back.
+Official-app redirection and Uptown video are later tasks; see
+[mobile app options](roborock_app.md) and [camera notes](camera.md). The current
+long hostname is for initial schedule tests; S7 MaxV camera bootstrap remains
+unvalidated. Hardware schedule results are still pending.

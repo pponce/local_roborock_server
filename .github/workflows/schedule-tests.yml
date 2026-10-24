@@ -29,7 +29,6 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --extra dev
       - run: uv run pytest -q
-      - run: bash -n scripts/install-pedro-docker.sh scripts/configure-pedro-docker.sh scripts/configure-pedro-nginx-docker.sh scripts/inspect-pedro-nginx.sh
 
   docker:
     needs: test
@@ -50,28 +49,3 @@ jobs:
         run: >-
           docker run --rm --network none local/roborock-server:schedule-ci
           python -c 'import roborock_local_server.bundled_backend.shared.schedule_runner'
-      - name: Verify configuration helper against the installed image
-        run: >-
-          docker run --rm --network none
-          --mount "type=bind,source=${PWD},target=/checks,readonly"
-          --workdir /checks local/roborock-server:schedule-ci
-          python -B -m unittest discover -s tests -p 'test_pedro_*.py' -v
-      - name: Verify Nginx deployment backends with real Docker networking
-        id: nginx_smoke
-        run: |
-          smoke_status=0
-          bash tests/smoke_pedro_nginx_docker.sh > "$RUNNER_TEMP/roborock-smoke.log" 2>&1 || smoke_status=$?
-          cat "$RUNNER_TEMP/roborock-smoke.log"
-          SMOKE_STATUS="$smoke_status" python3 - <<'PY'
-          import os
-          from pathlib import Path
-          lines = (Path(os.environ['RUNNER_TEMP']) / 'roborock-smoke.log').read_text().splitlines()
-          errors = [line for line in lines if any(word in line.lower() for word in ('error', 'not found', 'unknown command'))]
-          detail = 'passed' if os.environ['SMOKE_STATUS'] == '0' else (errors[-1] if errors else 'failed; inspect smoke log')
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write('diagnostic=' + detail[:300] + '\n')
-          PY
-          exit "$smoke_status"
-      - name: "Docker smoke result: ${{ steps.nginx_smoke.outputs.diagnostic }}"
-        if: always() && steps.nginx_smoke.outcome != 'skipped'
-        run: 'true'
