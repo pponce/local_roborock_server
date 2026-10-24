@@ -342,6 +342,25 @@ Read this section first when resuming in a new chat.
   gateway evidence is needed for traffic that never reaches the server.
   Keep the working Actalis bindings during diagnosis. The plan remains to test
   Uptown with the same certificate only after Downtown works.
+- **UniFi firewall screenshots reviewed after the Actalis retry:**
+  IoT-to-Internal shows a custom Allow rule for IPv4 TCP, source "2 IPs",
+  source port Any, destination `192.168.84.2`, destination "2 Ports",
+  connection state All, above the built-in return allowance and Both-family
+  Block All. The reverse Internal-to-IoT direction already allows all traffic;
+  the specific Roborock return rule is redundant with that broader allowance.
+  The IPv4 direction/state/order therefore look appropriate, conditional on
+  the custom rule being active and its hidden groups containing Downtown
+  `192.168.69.140`, Uptown `192.168.69.178`, and destination ports 443/8881.
+  Group members and the rule's enabled/paused setting were not expanded.
+  Custom Hits/Last Hit are dashes; these alone do not prove packets matched
+  or failed to match.
+  The screenshots do not show IoT DHCP DNS, DNS records, IoT-to-Gateway policies,
+  or actual traffic flows. The original AAAA record's removal is still
+  unconfirmed. The custom allow is IPv4-only and the MQTT listener is also
+  IPv4-only; an IPv6 attempt would not match that custom rule.
+  Next, confirm the hidden group values, check A and AAAA responses explicitly,
+  inspect the IoT DHCP DNS setting and DNS access to the gateway. Keep the
+  existing working IPv4 allow rule unless those checks reveal a mismatch.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
