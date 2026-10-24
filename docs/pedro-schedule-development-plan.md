@@ -191,7 +191,7 @@ Read this section first when resuming in a new chat.
   [Actalis ACME](https://guide.actalis.com/ssl/activation/acme),
   [SSL.com ACME](https://www.ssl.com/products/website-security/acme/),
   [tested vacuums](https://python-roborock.github.io/local_roborock_server/tested_vacuums/).
-- Reviewed the current public `pponce/ddns-dnsexit-custom` scripts for renewal
+- Reviewed the current `pponce/ddns-dnsexit-custom` scripts for renewal
   feasibility. They use Certbot with DNSExit auth/cleanup hooks and a deploy
   hook mapping three known certificate names to Nginx directories. The new
   Roborock certificate needs its own CA/account configuration and certificate
@@ -215,8 +215,18 @@ Read this section first when resuming in a new chat.
   The live cleanup hook also has the missing comma after the TXT record name.
   Inspection report: `local-work/cert-renewal-E8HlN9Mj.log`.
 - Pedro has activated Actalis's free plan and has its EAB Key ID and HMAC Key.
-  Their values were not supplied in chat. Use hidden terminal input on his
-  Linux machine; never put them in notes, GitHub, command arguments, or shared logs.
+  Pedro has now added `ACTALIS_EMAIL`, `ACTALIS_EAB_KID`, and
+  `ACTALIS_EAB_HMAC_KEY` to the existing
+  `/home/pedro/dynamicDnsScript/.env`. Only variable names were supplied in
+  chat. Read the values locally; do not prompt for or rewrite them. Never put
+  values in notes, GitHub, command arguments, or shared logs. The helper uses
+  a temporary mode-0600 Certbot configuration file and removes it afterward.
+  Existing DNSExit/UniFi/service credentials already load from the same .env.
+  GitHub reports the certificate repository as private. Its current main
+  excludes `.env` and `certs/`; `.env` and `config.txt` are not in the tree,
+  and path-specific commit queries returned no entries on that branch.
+  The Python service has an old commented login example; active authentication
+  reads environment variables. Do not treat commented examples as live secrets.
   Official Certbot ACME endpoint:
   `https://acme-api.actalis.com/acme/directory`.
   Request only `api-roborock.onefallday.com`, with certificate lineage
@@ -231,8 +241,8 @@ Read this section first when resuming in a new chat.
   under `certs/actalis/`, isolated from the existing Let's Encrypt account.
 - A local-only setup block has been prepared for Pedro to run over SSH.
   It installs `/home/pedro/dynamicDnsScript/local-roborock-cert/actalis.py`
-  and `dns-hook.sh`, excludes that folder using the certificate checkout's
-  local Git exclude file, patches the known request script to mode 1,
+  and `run.sh`, excludes that folder in the certificate checkout's
+  `.gitignore`, patches the known request script to mode 1,
   fixes the cleanup JSON comma, and appends the Actalis check to the existing
   daily entrypoint. It does not add another cron job or change Nginx certificate
   selection. Changed-script backups stay under the Roborock checkout's
@@ -240,13 +250,14 @@ Read this section first when resuming in a new chat.
   DNS validation is scoped to the dedicated Roborock TXT name; cleanup is
   skipped if another value is observed. Certificate/chain/key checks precede
   provider-specific deployment. A failed reload is retried on a later check.
-  Eleven offline checks passed, including actual OpenSSL key validation,
+  Twelve offline checks passed, including temporary credentials-file removal,
+  absence of keys from command arguments, actual OpenSSL key validation,
   installation idempotence, unknown-edit refusal, DNS/API failures,
   preservation of Let's Encrypt files, and reload retry without forced issuance.
   These tests do not establish successful live issuance or robot compatibility.
   Installation/issuance is still awaiting Pedro's run and result.
   After installation, rerun locally with
-  `sudo python3 /home/pedro/dynamicDnsScript/local-roborock-cert/actalis.py setup`.
+  `sudo bash /home/pedro/dynamicDnsScript/local-roborock-cert/run.sh setup`.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
