@@ -361,6 +361,27 @@ Read this section first when resuming in a new chat.
   Next, confirm the hidden group values, check A and AAAA responses explicitly,
   inspect the IoT DHCP DNS setting and DNS access to the gateway. Keep the
   existing working IPv4 allow rule unless those checks reveal a mismatch.
+- **IoT DNS configuration now confirmed by Pedro and screenshots:**
+  the IPv6 AAAA DNS record is disabled, and the firewall source group contains
+  `192.168.69.140` and `192.168.69.178`. Do not ask for those confirmations
+  again. A direct query to UniFi `192.168.84.1` returned `NOERROR` and
+  `api-roborock.onefallday.com A 192.168.84.2`.
+  The vacuum network is assigned to zone IoT, VLAN 69, with gateway
+  `192.168.69.1/24`; DHCP Server mode, Auto Default Gateway and Auto DNS Server
+  are enabled. DHCP range is `192.168.69.100–192.168.69.254`, lease 86400 seconds.
+  Network isolation is unchecked and Allow Internet Access is checked.
+  The DHCP guarding trusted-server list includes `192.168.69.1`.
+  These settings are consistent with supplying the gateway as DNS; they do not
+  prove which resolver the vacuum actually queries.
+  The next diagnostic is a bounded three-minute capture on the Linux host
+  during one Downtown pairing attempt, keeping Actalis selected. Capture
+  packet headers for Downtown's IPv4 on TCP 443/8881 and 555 (to detect a
+  wrong-port attempt), across host interfaces, with TCP flags visible.
+  Save only the local text report under ignored `local-work/downtown-actalis-*/`.
+  This capture has been prepared but not yet reported as run. If traffic
+  reaches Nginx, inspect TLS/HTTP progress; if no matching traffic arrives,
+  inspect gateway-side DNS/flows/routing. Host capture cannot see traffic
+  between Downtown and the gateway or an external DNS server.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
