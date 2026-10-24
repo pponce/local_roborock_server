@@ -28,7 +28,16 @@ Read this section first when resuming in a new chat.
 - Both Nginx listeners use `/etc/nginx/ssl/onefallday/fullchain.pem` and
   `/etc/nginx/ssl/onefallday/privkey.pem`. The certificate deploy hook matches the
   reviewed repository script; successful deployments update these and reload Nginx.
-- Last confirmed state: the local server has not started. No robot backups,
+- First startup attempt: checkout advanced to `08ef5ca` and personal helpers
+  were restored under ignored `local-work/setup/`. Seven local probe checks
+  passed. Live HTTPS/MQTT forwarding and both frontend certificates passed;
+  the measured Docker gateway is `172.18.0.1`.
+- The temporary route probe was removed. The separate credential container
+  reached "Choose LOCAL credentials" but the SSH session showed no prompt;
+  its Python process remained waiting after five minutes. Terminal/output
+  handling is suspected. A local launcher adjustment gives credential setup
+  direct terminal input/output and unbuffered Python; retry is pending.
+- Last confirmed state: the actual server has not started. No robot backups,
   cloud import, re-pairing or Homebridge endpoint changes have occurred.
 - The full Python suite passed on 3.11/3.13 and the Docker image built. A personal
   installer smoke test found overly strict handling of empty Compose IPAM
@@ -37,12 +46,13 @@ Read this section first when resuming in a new chat.
 
 ## Next steps
 
-1. Preserve the previously published personal setup files under
-   `local-work/setup/` before pulling the cleanup that untracks them. Previous
-   versions remain in Git history; this is not a history rewrite.
-2. Apply helper path updates and the empty-IPAM compatibility correction locally.
+1. Completed: personal setup files were preserved under `local-work/setup/`
+   before the cleanup pull. Previous public versions remain in Git history.
+2. Completed: helper paths and the empty-IPAM correction were applied locally.
    Personal files were last published in `8215eaf657a1ac3100fe8f8a3e79b58dc42380db`.
-3. Run the local Nginx startup helper, reusing the existing image. It verifies
+   Subsequent fixes, including terminal handling, remain local-only.
+3. Stop only the stalled credential setup container, apply the local terminal
+   adjustment, then retry the startup helper using the existing image. It verifies
    both proxy routes and the actual Docker gateway, then creates external-TLS
    configuration with loopback-only backends on 555/18881 and public ports 443/8881.
 4. Choose a local dashboard password and six-digit app/plugin PIN at hidden

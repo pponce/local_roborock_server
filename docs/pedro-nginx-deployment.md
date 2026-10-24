@@ -99,6 +99,13 @@ and changes no services. Return the `START COPY HERE` / `END COPY HERE` section.
 
 ## First Docker startup
 
+Latest attempt: both live forwarding paths and frontend certificates passed,
+with measured proxy address `172.18.0.1`. Probe cleanup completed. The separate
+credential container reached its initial message but its prompt was not visible
+in SSH. A local-only launcher adjustment routes the credential process directly
+to the terminal and uses unbuffered Python; the host retry is pending. The
+actual server, cloud import and onboarding have not started.
+
 After preserving the local files and applying the local Compose compatibility fix,
 run as Pedro, without sudo before bash. Startup is still pending on his host:
 
