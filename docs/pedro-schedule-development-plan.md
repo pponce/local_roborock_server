@@ -322,6 +322,26 @@ Read this section first when resuming in a new chat.
   reported with that verification. Next, refresh the dashboard for Downtown's
   connection status; if still offline, retry its existing LocalRock onboarding.
   Robot trust remains unconfirmed until Downtown actually connects.
+- **First LocalRock retry after switching to Actalis:** Pedro reports the same
+  `server samples = 0` message. Local onboarding is still incomplete. The
+  successful host TLS checks do not establish the robot's route, DNS answers,
+  SNI selection or certificate trust. No new robot packet capture or TLS alert
+  has been reported for this attempt, so do not classify it as an Actalis
+  certificate rejection.
+  The current upstream compatibility table was rechecked: the S7 row reports
+  Actalis and SSL.com working and Let's Encrypt failing, but does not report
+  the firmware version. Downtown's imported firmware is `02.16.12`; equivalence
+  with the successful S7 report and its exact chain is unconfirmed.
+  [Upstream compatibility table](https://python-roborock.github.io/local_roborock_server/tested_vacuums/#supported-vacuums).
+  Before another blind pairing cycle, inspect the IoT DHCP DNS setting and
+  UniFi Flows for Downtown's latest attempt: actual client IP, DNS destinations,
+  traffic to `192.168.84.2:443` / `:8881`, and applied allow/block policies.
+  The earlier Linux capture saw no traffic from Downtown's IPv4 to these ports;
+  it could not observe DNS between the vacuum and gateway, IPv6, or traffic to
+  other destinations. A host capture can next confirm TCP/TLS arrival, but
+  gateway evidence is needed for traffic that never reaches the server.
+  Keep the working Actalis bindings during diagnosis. The plan remains to test
+  Uptown with the same certificate only after Downtown works.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
