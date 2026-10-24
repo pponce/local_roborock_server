@@ -141,17 +141,77 @@ Read this section first when resuming in a new chat.
   Do not infer a certificate failure from the spinning LocalRock button or an
   empty connection snapshot. LocalRock's current sanitizer was checked: it strips
   `api-` for token.r and preserves an explicit port, with no inserted `:555`.
-- Next diagnostic prepared (not yet reported): confirm Downtown still has
-  `192.168.69.140`, then capture three minutes of IPv4 TCP packet summaries on
-  Linux interface `enp170s0` during one fresh LocalRock pairing attempt. The local
-  command uses tcpdump quick output without application payloads, checks Linux
-  hostname resolution including IPv6, counts raw records from the preceding
-  Nginx capture without exposing their contents, and lists error-log destinations.
-  Results go under `local-work/downtown-network-XXXXXXXX/`. Nginx stays unchanged;
-  tcpdump is installed only if missing. This host-side capture cannot observe
-  the robot's DNS requests to its gateway or connections sent elsewhere, and its
-  packet filter uses the known IPv4 address; an IPv6 DNS answer needs separate
-  follow-up. Diagnose reachability/log routing before changing TLS or certificates.
+- Pedro ran the three-minute host packet check starting October 23, 2026 at
+  19:09:24 Pacific. Linux resolved the hostname only to IPv4 `192.168.84.2`.
+  The previous private Nginx capture contained two raw lines and no mention of
+  Downtown's IPv4. Active configuration listed only
+  `error_log /var/log/nginx/error.log;`.
+  Packet capture on `enp170s0` with `host 192.168.69.140 and tcp` observed only:
+  at 19:11:33, `192.168.84.2:40102 -> 192.168.69.140:58867`, then the reverse,
+  each with zero TCP payload. There were no packets involving this IPv4 filter
+  on server ports 443 or 8881, and zero kernel packet drops.
+  Report: `local-work/downtown-network-jmWRLUn0/report.txt`.
+  Do not infer who initiated or why those two packets occurred from tcpdump
+  quick output (TCP flags were not printed). The capture does not show the
+  robot's DNS queries to its gateway, IPv6 attempts, traffic to other hosts,
+  or connections whose source was rewritten by NAT.
+- Next check: inspect the IoT network's DHCP DNS server setting in UniFi;
+  successful Linux DNS resolution does not establish what the robot receives.
+  Also inspect Insights > Flows, if available, filtered to Downtown around
+  19:09-19:13 Pacific for destination addresses/ports, allowed/blocked status,
+  and matching policies. Confirm new IoT-to-Internal TCP connections from
+  Downtown to the server's destination ports 443/8881 are allowed; successful
+  replies to server-initiated traffic do not establish that permission.
+  No further Wi-Fi reset, DNS, certificate, firewall or Nginx change has been
+  requested by these read-only checks.
+- Pedro's requested fallback if the next attempt remains unsuccessful: retain
+  Let's Encrypt for all other Nginx sites and for Uptown S7 MaxV; obtain a separate
+  Actalis or SSL.com certificate for `api-roborock.onefallday.com` for Downtown
+  S7. No certificate has been ordered, issued or installed for this fallback,
+  and no renewal or Nginx settings have been changed.
+  A single-hostname/single-container design is feasible using Nginx maps from
+  client source address to certificate/key paths in both HTTP and stream TLS.
+  Nginx 1.24 supports variable certificate paths. Before configuring it, confirm
+  the original source IP reaches Nginx, reserve the robot addresses, handle or
+  defer IPv6, and check SNI/default-server selection on shared HTTPS 443.
+  If S7 does not select the intended HTTPS virtual host, a dedicated Roborock
+  LAN listener address is a fallback that avoids changing certificates for
+  unrelated websites. The server's app/client login responses use the configured
+  API/MQTT hostname, while the bootstrap region handler can reflect the incoming
+  Host header. A two-hostname alternative would therefore need end-to-end
+  validation; the proposed source-IP mapping retains the existing hostname.
+- Actalis is a reasonable first certificate fallback: its current free plan
+  provides single-domain 90-day DV certificates with unlimited ACME issuance;
+  SSL.com also supports automated ACME issuance/renewal. The upstream tested
+  vacuum table reports S7 working with Actalis and SSL.com (S7 firmware omitted),
+  and S7 MaxV `a27/02.59.36` working with Let's Encrypt. These reports do not
+  guarantee compatibility with every new issuer chain or prove our current
+  failure is certificate-related.
+  Sources: [Actalis plans](https://www.actalis.com/subscription),
+  [Actalis ACME](https://guide.actalis.com/ssl/activation/acme),
+  [SSL.com ACME](https://www.ssl.com/products/website-security/acme/),
+  [tested vacuums](https://python-roborock.github.io/local_roborock_server/tested_vacuums/).
+- Reviewed the current public `pponce/ddns-dnsexit-custom` scripts for renewal
+  feasibility. They use Certbot with DNSExit auth/cleanup hooks and a deploy
+  hook mapping three known certificate names to Nginx directories. The new
+  Roborock certificate needs its own CA/account configuration and certificate
+  lineage, a separate deployment target such as
+  `/etc/nginx/ssl/roborock-downtown/`, and subdomain-aware DNS validation:
+  zone `onefallday.com`, record `_acme-challenge.api-roborock`. The existing
+  auth hook treats CERTBOT_DOMAIN as the zone and uses a bare
+  `_acme-challenge` relative name, so simply appending the subdomain to the
+  current request loop is insufficient. Use due-only automated renewal,
+  certificate/key/chain validation, Nginx configuration validation and graceful
+  reload, plus expiry/failure monitoring. Personal changes stay local; do not
+  publish installers, certificate files, credentials or host-specific hooks.
+- Many-year publicly trusted leaf certificates are not available under current
+  CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
+  100 days from March 15, 2027, and 47 days from March 15, 2029.
+  A multi-year purchase does not remove periodic replacement. A long-lived
+  private/self-signed certificate does not give stock firmware a trusted issuer.
+  [Current requirements, section 6.3.2](https://cabforum.org/working-groups/server/baseline-requirements/requirements/#632-certificate-operational-periods-and-key-pair-usage-periods).
+  If the packet capture shows no traffic reaching the host, DNS/routing/firewall
+  diagnosis is still needed before a different certificate can help.
 - Available map records, a Homebridge backup and Homebridge endpoint changes
   have not yet been reported. Downtown's Wi-Fi provisioning has been attempted.
   Host/app TLS success does not
