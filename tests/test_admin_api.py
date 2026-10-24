@@ -251,7 +251,8 @@ def test_admin_login_and_status_flow(tmp_path: Path) -> None:
 
     login_page = client.get("/admin")
     assert login_page.status_code == 200
-    assert "Sign in to manage the stack." in login_page.text
+    assert "Sign in to manage your local server." in login_page.text
+    assert login_page.headers["cache-control"] == "no-store"
 
     unauthenticated_status = client.get("/admin/api/status")
     assert unauthenticated_status.status_code == 401
@@ -288,9 +289,10 @@ def test_admin_login_and_status_flow(tmp_path: Path) -> None:
     assert "Allow new app logins, onboarding, and first-time vacuum connections" in dashboard_page.text
     assert "Protocol Sync Secret" in dashboard_page.text
 
-    assert "Num query samples" in dashboard_page.text
-    assert "Public Key determined" in dashboard_page.text
-    assert "Mqtt connected" in dashboard_page.text
+    assert "Query samples" in dashboard_page.text
+    assert "Public key" in dashboard_page.text
+    assert "MQTT connection" in dashboard_page.text
+    assert dashboard_page.headers["cache-control"] == "no-store"
     assert "Buy Me a Coffee" in dashboard_page.text
     assert "PayPal" in dashboard_page.text
     assert "5% Off Roborock Store" in dashboard_page.text
@@ -302,6 +304,57 @@ def test_admin_login_and_status_flow(tmp_path: Path) -> None:
 
     status_after_logout = client.get("/admin/api/status")
     assert status_after_logout.status_code == 401
+
+
+def test_admin_assets_are_local_allowlisted_and_do_not_expose_templates(tmp_path: Path) -> None:
+    config_file = write_release_config(tmp_path)
+    config = load_config(config_file)
+    supervisor = ReleaseSupervisor(config=config, paths=resolve_paths(config_file, config))
+    client = TestClient(supervisor.app)
+
+    for name, media_type in (("admin.css", "text/css"), ("admin.js", "text/javascript"),
+                             ("login.js", "text/javascript")):
+        response = client.get(f"/admin/assets/{name}")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith(media_type)
+        assert response.headers["cache-control"] == "no-cache"
+        assert response.text.strip()
+
+    for name in ("dashboard.html", "login.html", "config.toml", "missing.js"):
+        assert client.get(f"/admin/assets/{name}").status_code == 404
+    assert client.get("/admin/api/auth").status_code == 401
+
+
+def test_admin_support_payload_cannot_break_out_of_json_script() -> None:
+    from html.parser import HTMLParser
+    from roborock_local_server.standalone_admin import _admin_dashboard_html
+
+    class Scripts(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.active = False
+            self.payload = ""
+            self.scripts = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "script":
+                values = dict(attrs)
+                self.scripts.append(values)
+                self.active = values.get("id") == "projectSupport"
+
+        def handle_endtag(self, tag):
+            if tag == "script":
+                self.active = False
+
+        def handle_data(self, data):
+            if self.active:
+                self.payload += data
+
+    support = {"title": '</script><script>alert("example")</script>', "links": []}
+    parser = Scripts()
+    parser.feed(_admin_dashboard_html(support))
+    assert len(parser.scripts) == 2
+    assert json.loads(parser.payload) == support
 
 
 def test_admin_auth_endpoints_toggle_new_connections_and_manage_sessions(tmp_path: Path) -> None:
