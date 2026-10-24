@@ -64,12 +64,23 @@ Read this section first when resuming in a new chat.
   The full Python suite, wheel resource check and 11 Chromium checks passed.
   This UI-only PR does not include schedules or personal setup files.
 - Pedro wants the new UI on this Docker installation before proceeding with
-  Downtown's certificate test. `SCHEDULE_SUPPORT_UI_TEST` will combine both
-  features for installation while preserving the independent review branches.
-  The local update helper belongs under `local-work/setup/scripts/` and must not
-  be published. Pedro explicitly waived an additional backup/rollback image
-  for this UI change. Deployment has not yet been reported; the live image
-  remains the schedule-only image above until a successful update report.
+  Downtown's certificate test. `SCHEDULE_SUPPORT_UI_TEST` now combines both
+  features at `a5a46600845f4b137e14e334ef733341b61e63e6`, preserving the independent
+  review branches. The full Python suites on 3.11/3.13, wheel asset check and
+  11 Chromium checks passed on the combined commit. The Docker image also built
+  successfully and passed its schedule-module import check
+  ([schedule/Docker run](https://github.com/pponce/local_roborock_server/actions/runs/40048914576),
+  [dashboard run](https://github.com/pponce/local_roborock_server/actions/runs/40048914525)).
+  The private `local-work/setup/scripts/update-local-dashboard.sh` helper builds
+  that pinned commit as `local/roborock-server:schedule-ui`, validates that only
+  the Compose image changes, verifies the packaged assets, and recreates only
+  the server container. It keeps the network, imported data, config, and Nginx
+  certificate paths. Do not publish the helper or run the first-start installer.
+  Pedro explicitly waived an additional backup/rollback image for this UI change.
+  Deployment has not yet been reported; the live image remains the schedule-only
+  image above until a successful update report. The helper is prepared for Pedro
+  to create/run over SSH; preparing it here does not install it on his machine.
+  Onboarding device/OS still needs to be identified before giving its launcher.
 - Available map records, a Homebridge backup, robot Wi-Fi resets and Homebridge
   endpoint changes have not yet been reported. Host TLS success does not establish
   S7 certificate trust or IoT-to-server firewall access.
