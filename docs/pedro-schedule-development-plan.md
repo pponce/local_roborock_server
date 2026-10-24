@@ -4,18 +4,80 @@ Recorded: 2026-10-23. This is a working plan for the
 [pponce fork](https://github.com/pponce/local_roborock_server), not the general
 installation guide or a claim that schedule support is complete.
 
-## Current status
+## Recovery checkpoint — October 24, 2026 (UTC)
 
-- Pedro has installed
-  [`pponce/homebridge-roborock-matter-plus#SCHEDULE_PROTOCOL_CAPTURE`](https://github.com/pponce/homebridge-roborock-matter-plus/tree/SCHEDULE_PROTOCOL_CAPTURE).
-- Initial testing will use the existing Roborock cloud account. Live capture
-  results are pending.
-- Prepare the Linux development checkout now using
-  [`scripts/setup-pedro-dev.sh`](../scripts/setup-pedro-dev.sh).
-- Implement local-server changes after reviewing the capture results and
-  relevant upstream work.
-- Provision and run the Docker test installation later, after the first
-  implementation passes its automated checks.
+Read this section first when resuming in a new chat.
+
+- Public notes/plans are explicitly permitted. Application code and tests on
+  `SCHEDULE_SUPPORT` are for schedule support and potential upstream PRs.
+- Personal installers, Nginx templates and tests of those installers must stay
+  under the Git-ignored `local-work/setup/` directory. Do not upload them again.
+- Provide terminal commands in one Bash `{ ... }` block, suitable for SSH, with
+  functions and `return` for failures rather than exiting the interactive shell.
+- Development checkout: `/home/pedro/devProjects/local_roborock_server`.
+  Runtime: `/opt/local_roborock_server`. Docker data: `/var/lib/docker`.
+  All backups stay under the checkout's ignored `backups/` directory.
+- Installed image: `local/roborock-server:schedule-7e07021b6f51`, built from
+  `7e07021b6f51fc773e7e08166e8cc5220826025c`. Pulling newer notes/scripts does not
+  change that image; the runtime's `SOURCE_COMMIT` records the build.
+- Host: `192.168.84.2`; gateway/DNS: `192.168.84.1`. The local A record for
+  `api-roborock.onefallday.com` resolves correctly from the Linux host.
+- Nginx stream support is installed/loaded; Nginx UI's self-check fixes created
+  its stream directories/include. Nginx syntax passes and it listens on 443 and
+  `192.168.84.2:8881`. Backends 555 and 18881 were free at the last inspection.
+- Both Nginx listeners use `/etc/nginx/ssl/onefallday/fullchain.pem` and
+  `/etc/nginx/ssl/onefallday/privkey.pem`. The certificate deploy hook matches the
+  reviewed repository script; successful deployments update these and reload Nginx.
+- Last confirmed state: the local server has not started. No robot backups,
+  cloud import, re-pairing or Homebridge endpoint changes have occurred.
+- The full Python suite passed on 3.11/3.13 and the Docker image built. A personal
+  installer smoke test found overly strict handling of empty Compose IPAM
+  defaults. A correction and regression test are prepared locally; successful
+  Docker startup of that corrected installer has not yet been reported.
+
+## Next steps
+
+1. Preserve the previously published personal setup files under
+   `local-work/setup/` before pulling the cleanup that untracks them. Previous
+   versions remain in Git history; this is not a history rewrite.
+2. Apply helper path updates and the empty-IPAM compatibility correction locally.
+   Personal files were last published in `8215eaf657a1ac3100fe8f8a3e79b58dc42380db`.
+3. Run the local Nginx startup helper, reusing the existing image. It verifies
+   both proxy routes and the actual Docker gateway, then creates external-TLS
+   configuration with loopback-only backends on 555/18881 and public ports 443/8881.
+4. Choose a local dashboard password and six-digit app/plugin PIN at hidden
+   prompts. The usual email is acceptable. These do not change the cloud account;
+   cloud import later uses a separate emailed Roborock verification code.
+5. Verify the dashboard and IoT access. Record/export available maps, schedules,
+   rooms and settings under `backups/` before moving a vacuum. Import cloud data,
+   then onboard one robot and test schedules before adding the second.
+6. The current Homebridge instance uses one server for all devices. Pedro agreed
+   to validate one robot locally first (temporarily losing its cloud connection
+   in Homebridge), move the second, then switch Homebridge once. The capture
+   branch is verified as 3.40.0 with `serverURL` and pause/delay support. Use
+   Region **Custom server**, URL `https://api-roborock.onefallday.com`, and the
+   local email/PIN after logging out of the plugin cloud session. Preserve
+   existing accessory identities and pause/delay policy.
+7. Current certificate compatibility favors Uptown S7 MaxV for the first test.
+   Downtown S7 has reported failures with Let's Encrypt; validate its trust or
+   arrange a compatible chain before moving it. Cloud import includes jobs,
+   rooms and routines but is not a restorable map backup.
+
+For a new chat, retrieve this note from GitHub and ask for recent local output.
+Do not assume access to files on Pedro's host. The machine's local setup files
+remain authoritative; preparing a script does not mean it was run.
+
+The capture branch in use is `SCHEDULE_PROTOCOL_CAPTURE`. Captures verified
+schedule toggles/time edits, native timer linkage and cleaning settings. Downtown
+missed its 14:09 run while offline and did not replay after reconnecting around
+14:10–14:11 (still skipped at 14:17). The exact cloud start command was not captured.
+Schedule code integrates the upstream proposal with native-timer preflight,
+settings preservation, refusal handling, deduplication and timezone/DST tests.
+Hardware schedule validation remains pending.
+
+See the [Nginx deployment notes](https://github.com/pponce/local_roborock_server/blob/SCHEDULE_SUPPORT/docs/pedro-nginx-deployment.md),
+[Docker notes](https://github.com/pponce/local_roborock_server/blob/SCHEDULE_SUPPORT/docs/pedro-docker-installation.md)
+and [schedule test sequence](https://github.com/pponce/local_roborock_server/blob/SCHEDULE_SUPPORT/docs/schedules.md).
 
 ## Responsibilities
 
@@ -33,6 +95,8 @@ Do not move pause/delay policy into this server.
 | Location | Purpose | When |
 | --- | --- | --- |
 | `/home/pedro/devProjects/local_roborock_server/` | Git checkout, feature branches, source, tests, and Docker build context | Prepare now |
+| `/home/pedro/devProjects/local_roborock_server/backups/` | All backup files, exports, schedule captures, and migration records; private and Git-ignored | Before pairing or changing a deployment |
+| `/home/pedro/devProjects/local_roborock_server/local-work/` | Private logs/working files; `setup/` holds personal scripts, templates and tests | During setup and maintenance |
 | `/opt/local_roborock_server/` | Deployed service configuration and persistent application files | Create during later installation |
 | `/opt/local_roborock_server/compose.yaml` | Launch the selected versioned Docker image | Later |
 | `/opt/local_roborock_server/config.toml` | Server configuration; includes sensitive settings | Later |
@@ -51,7 +115,26 @@ are the files we manage directly.
 
 Homebridge remains in its existing installation.
 
-## Prepare the checkout now
+For the first installation Pedro selected the existing `onefallday.com`
+certificate workflow in `pponce/ddns-dnsexit-custom`. The server hostname is
+`api-roborock.onefallday.com` (the protocol requires the `api-` prefix).
+Use provided certificates and confirm the installed issuer, expiry, and SANs
+before pairing; the S7 has reported Let's Encrypt incompatibility. The long
+hostname also needs separate investigation for S7 MaxV camera bootstrap.
+
+Pedro requested that backups stay together inside the development project.
+Use `backups/YYYY-MM-DD-HHMMSS/` with `downtown/`, `uptown/`, and `server/`
+subdirectories as applicable. Keep robot names, model/firmware, capture time,
+and restoration notes with each set. Raw exports may contain credentials and
+household activity; never commit them. The backup folders do not enter Docker
+builds, which use an archive of the committed source tree.
+
+App-native map backups may remain on the robot or in Roborock's service; they
+cannot necessarily be exported to this directory. Save any available exports
+and screenshots here, and distinguish visual records from verified restorable
+map backups. No robot backup has been made by the setup script.
+
+## Checkout preparation (completed)
 
 Run the setup script as `pedro` in Bash. Its brace-grouped contents can also
 be pasted directly into a terminal. It requires Git and access to GitHub.
@@ -183,6 +266,8 @@ unmodified development-tree `docker compose up` as the live deployment.
 
 Before each change, back up the deployment configuration, secrets, and the
 entire persistent `data/` directory using a consistent stopped-service backup.
+Store that archive under the dated `backups/` directory above, including the
+selected image ID, source commit, and Compose files in the restoration record.
 Keep the previous image and matching data backup for rollback; an older image
 alone may not understand data written by newer code.
 
