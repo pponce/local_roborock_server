@@ -462,6 +462,28 @@ Read this section first when resuming in a new chat.
   referenced --match-set group using a tested single-line awk extractor.
   This is read-only, requires no pairing retry yet, and creates no gateway
   files. Keep the working DNS and current Actalis/Nginx configuration.
+- **IoT dispatch chain and nested groups (2026-10-24 00:02 America/Los_Angeles):**
+  The next gateway readback shows CUSTOM1_IN_USER dispatches destinations in
+  `UBIOS_LAN_subnets` to **UBIOS_CUSTOM1_LAN_USER**. This is the next
+  relevant IoT-to-Internal chain, not yet the actual allow/block rule contents.
+  Its aggregate dispatch counter is 822554 packets; the nearby NEW-traffic
+  NFLOG counter is 24. Neither identifies Downtown's individual packets.
+  The displayed zone groups are `list:set` containers: e.g.
+  `UBIOS_LAN_subnets` holds `UBIOS4LAN_subnets` and
+  `UBIOS6LAN_subnets`. Their actual addresses and the custom rule's port
+  members remain unseen. Do not equate those wrapper listings with verified
+  group values, or the parent chain's final zero-count DROP with a proven
+  downstream policy verdict.
+  Prepared a read-only Bash diagnostic that snapshots the filter table, starts
+  at CUSTOM1_LAN_USER and LAN_CUSTOM1_USER, follows further declared chain
+  references, and expands every referenced list:set recursively. It also reads
+  the IoT/Internal zone sets. Chain order and packet counters are retained;
+  already visited chains/sets are skipped. It creates no gateway files and
+  prints only data; `ipset save` output's create/add lines are not executed.
+  Syntax and nested-chain/set extraction were checked against fixtures,
+  including duplicate/cycle handling. No live gateway execution of this
+  expanded diagnostic has been reported yet. Await that output before
+  identifying a specific rule or requesting another pairing/certificate change.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
