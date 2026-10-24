@@ -58,9 +58,11 @@ Read this section first when resuming in a new chat.
    Region **Custom server**, URL `https://api-roborock.onefallday.com`, and the
    local email/PIN after logging out of the plugin cloud session. Preserve
    existing accessory identities and pause/delay policy.
-7. Current certificate compatibility favors Uptown S7 MaxV for the first test.
-   Downtown S7 has reported failures with Let's Encrypt; validate its trust or
-   arrange a compatible chain before moving it. Cloud import includes jobs,
+7. Pedro explicitly chose Downtown S7 as the first robot, using the existing
+   Let's Encrypt certificate to test whether the reported failures reproduce.
+   Start/import/back up first, then onboard only Downtown and retain server/Nginx
+   diagnostics. Do not switch issuer based on other reports alone. Uptown and
+   Homebridge stay on cloud during this initial test. Cloud import includes jobs,
    rooms and routines but is not a restorable map backup.
 
 For a new chat, retrieve this note from GitHub and ask for recent local output.

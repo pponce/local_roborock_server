@@ -168,10 +168,13 @@ cloud temporarily; the moved robot will not have a functioning cloud connection
 in that instance. Once both robots work locally, switch Homebridge once. Do not
 create duplicate bridge instances or remove/re-pair Matter accessories by default.
 
-With the current Let's Encrypt chain, Uptown S7 MaxV has the stronger compatibility
-report. Downtown S7 has a reported Let's Encrypt failure; successful host/browser
-TLS does not resolve that. Validate or arrange a compatible chain before moving
-Downtown. Earlier plans to start with Downtown are superseded by this ordering.
+Pedro explicitly selected **Downtown S7 first**, using the current Let's Encrypt
+chain, to check whether the reported S7 failure reproduces on his firmware.
+Complete startup, cloud import and backups before its Wi-Fi reset. Retain server
+and Nginx diagnostics during onboarding so a TLS trust rejection can be separated
+from DNS, firewall, proxy or key-recovery failures. A successful browser/host TLS
+test is not a robot trust test. Leave Uptown S7 MaxV and Homebridge on cloud during
+this first trial; reconsider the certificate only if the actual failure supports it.
 
 Use a second computer with Wi-Fi while the Linux server stays connected to the
 LAN. Use the project's [onboarding guide](onboarding.md), selecting the imported
@@ -181,7 +184,10 @@ and perform a **Wi-Fi reset only**, not a factory reset. Follow the guided AP
 connection/reconnection and key-recovery steps; multiple cycles can be required.
 A phone running LocalRock is another documented onboarding option.
 
-After the first robot connects, check status, map/room access, ordinary start/dock,
+The admin dashboard checks service/onboarding health; it is not a full robot
+control app. Use a local client such as LocalRock (or a prepared diagnostic
+client) for control tests while Homebridge remains on cloud. After the first
+robot connects, check status, map/room access, ordinary start/dock,
 and native timer entries against the captured jobs. Then test one recurring
 schedule, correct rooms/settings and disabled state. Repeat for the second robot
 before moving Homebridge. Do not assume maps or native timers survived solely
