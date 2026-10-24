@@ -446,6 +446,22 @@ Read this section first when resuming in a new chat.
   The existing allow must be enabled and match the actual server network's zone.
   Do not repeat the same DNS settings checks, change certificates, or open
   all IoT traffic to Internal based on this capture.
+- **Gateway route/rule readback (2026-10-23 23:58 America/Los_Angeles):**
+  The ordinary route to `192.168.84.2` is directly through `br0`,
+  source `192.168.84.1`. A forwarded lookup from Downtown's
+  `192.168.69.140`, ingress `br69`, also selects `br0`.
+  The active filter jump for `br69` enters **UBIOS_CUSTOM1_IN_USER**;
+  traffic from `br0` enters **UBIOS_LAN_IN_USER**.
+  The previous keyword-filtered output did not include the contents of the
+  CUSTOM1 chain, so it does not establish whether the Roborock allow exists,
+  matches, or is ordered correctly. Aggregate counters are not per-robot proof.
+  The diagnostic's multiline awk expression failed with `missing )` /
+  `extra ')'`, so no IP/port set members were retrieved. This was a
+  diagnostic-script error, not a gateway firewall failure.
+  Next read the complete CUSTOM1_IN_USER rules with counters and list each
+  referenced --match-set group using a tested single-line awk extractor.
+  This is read-only, requires no pairing retry yet, and creates no gateway
+  files. Keep the working DNS and current Actalis/Nginx configuration.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
