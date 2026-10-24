@@ -96,8 +96,13 @@ Read this section first when resuming in a new chat.
   Pedro has installed LocalRock on his iPhone and successfully logged in.
   Add Vacuum / Load vacuums shows Downtown. He confirmed the firewall allowance
   for Downtown (IoT `192.168.69.140`) to server (Internal `192.168.84.2`), TCP
-  destination ports 443/8881, including new connections. Pairing has not yet been
-  reported. Leave Uptown and Homebridge on cloud while Downtown's current
+  destination ports 443/8881, including new connections. The first iOS attempt
+  could not join the robot hotspot. The retry sent Wi-Fi credentials and showed
+  `Pairing completed`, but the overall button kept spinning; server status was
+  `samples=0`, `public key pending (missing)`, `waiting`. This does not confirm
+  completed server onboarding. UniFi now shows Downtown connected to its IoT
+  network at the unchanged address `192.168.69.140`.
+  Leave Uptown and Homebridge on cloud while Downtown's current
   Let's Encrypt chain is tested. On iOS, keep the phone on its normal home Wi-Fi
   initially: Start pairing contacts the server before asking iOS to join the
   robot hotspot. Reset only the robot's Wi-Fi, then let LocalRock request the
@@ -108,8 +113,34 @@ Read this section first when resuming in a new chat.
   `~/devProjects/local_roborock_server/local-work/onboarding/`, with `launch.command`.
   The Mac GUI uses `api-roborock.onefallday.com:443`, the dashboard password,
   timezone `America/Los_Angeles`, country `us`, and no camera domain for S7.
-- Available map records, a Homebridge backup, robot Wi-Fi resets and Homebridge
-  endpoint changes have not yet been reported. Host/app TLS success does not
+- On October 23, 2026 at 18:49:58 Pacific, the read-only TLS report showed global
+  Nginx protocols TLS 1.0/1.1/1.2/1.3, with both Roborock HTTPS and MQTT listeners
+  explicitly configured for TLS 1.2/1.3. No matching Downtown errors appeared in
+  the excerpts, and no Downtown TCP connection was present at that instant.
+  Report folder: `local-work/downtown-tls-xPbLuLUY`. This does not establish
+  whether DNS, routing, TLS version/ciphers or certificate trust is the cause.
+  Nginx's default error level can omit handshake failures.
+- Pedro wants to keep his current Let's Encrypt wildcard certificate. TLS
+  versions/ciphers are independent of certificate trust; changing protocol
+  settings cannot repair an untrusted CA chain. No TLS/cipher/certificate
+  changes have been made during this diagnostic step. The bundled MQTT TLS
+  server permits older protocols with `DEFAULT:@SECLEVEL=0`; that differs from
+  the current Nginx stream configuration but is not proof of the S7's failure.
+- A private `local-work/setup/scripts/downtown-nginx-debug.py` helper is prepared
+  for the next test; execution on Pedro's host has not yet been reported. It
+  enables `debug_connection 192.168.69.140` using the installed `--with-debug`
+  Nginx, adds a private log under `local-work/downtown-debug/`, and validates
+  before reloading. Its `stop` mode removes only its marked directives and
+  prints a filtered connection/TLS report. Raw logs stay local. Syntax,
+  configuration restoration after failed validation, preservation of later
+  unrelated edits, and report filtering were checked in an isolated fixture.
+  Retry Downtown once with logging enabled, then run `stop`; do not infer a
+  certificate failure from the spinning LocalRock button or the earlier empty
+  connection snapshot. LocalRock's current sanitizer was checked: it strips
+  `api-` for token.r and preserves an explicit port, with no inserted `:555`.
+- Available map records, a Homebridge backup and Homebridge endpoint changes
+  have not yet been reported. Downtown's Wi-Fi provisioning has been attempted.
+  Host/app TLS success does not
   establish S7 certificate trust. The IoT firewall allowance is user-confirmed;
   successful robot-to-server traffic is still to be observed during pairing.
 - Personal files were restored under ignored `local-work/setup/`; the local
@@ -120,7 +151,9 @@ Read this section first when resuming in a new chat.
 ## Next steps
 
 1. The combined schedule/UI image is installed and healthy. Continue with
-   Downtown's network validation and LocalRock onboarding. Do not rerun the image
+   Downtown's connection/TLS diagnostics; Wi-Fi provisioning succeeded but
+   server onboarding still lacks a public key and connection confirmation.
+   Keep the existing certificates for this next observed attempt. Do not rerun the image
    updater, first-start helper or cloud import merely to continue.
    Disconnected robots are expected until onboarding; imported names do not
    prove robot connectivity. The post-import runtime backup is already verified.
