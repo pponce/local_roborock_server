@@ -46,14 +46,30 @@ Read this section first when resuming in a new chat.
 - Successful setup log:
   `/home/pedro/devProjects/local_roborock_server/local-work/configure-nginx-20261024T003002Z-aX8vfh5A.log`.
 - Cloud import succeeded: Pedro reports that both robot names appear in the
-  dashboard. Schedule counts/completeness have not yet been checked. The original
+  dashboard. The post-import backup also completed successfully. The original
   stalled SSH terminal was closed after the successful startup in the second.
-- A local-only `local-work/setup/scripts/backup-after-cloud-import.py` helper
-  is prepared for a consistent archive of `/opt/local_roborock_server`, followed
-  by schedule counts and a health check. It briefly stops and restarts the same
-  container, retaining the Docker network. Local simulations covered success,
-  archive failure, interruption and stop failure; Pedro has not reported running
-  it yet. All output stays in a new ignored dated `backups/` directory.
+- Verified backup: `/home/pedro/devProjects/local_roborock_server/backups/2026-10-24-004831-import-8qenpeim/`.
+  Archive integrity and container health passed; command status was 0.
+  Downtown Rock (`roborock.vacuum.a15`, firmware `02.16.12`) has 7 imported jobs,
+  all enabled. Uptown Rock (`roborock.vacuum.a27`, firmware `02.59.36`) has 8,
+  all enabled. These counts do not establish native-timer/map preservation.
+  The image ID was `sha256:f8279329e1f61ab28663c13f67b3a8c1f8dd5ec86a563fdfcbb96ee2ae8b28ca`.
+- The private backup helper remains at `local-work/setup/scripts/backup-after-cloud-import.py`.
+  It saves a consistent runtime archive and restores the same container/network.
+- Dashboard redesign is separate: `ADMIN_DASHBOARD_REFRESH` starts at upstream
+  `d40d67d`, with draft [fork PR #1](https://github.com/pponce/local_roborock_server/pull/1)
+  against `UPSTREAM_ADMIN_BASE`. The integration cannot open PRs in the upstream
+  repository (HTTP 403). Pedro will handle upstream PR submission/updates after
+  schedule support works; do not submit either feature upstream yet.
+  The full Python suite, wheel resource check and 11 Chromium checks passed.
+  This UI-only PR does not include schedules or personal setup files.
+- Pedro wants the new UI on this Docker installation before proceeding with
+  Downtown's certificate test. `SCHEDULE_SUPPORT_UI_TEST` will combine both
+  features for installation while preserving the independent review branches.
+  The local update helper belongs under `local-work/setup/scripts/` and must not
+  be published. Pedro explicitly waived an additional backup/rollback image
+  for this UI change. Deployment has not yet been reported; the live image
+  remains the schedule-only image above until a successful update report.
 - Available map records, a Homebridge backup, robot Wi-Fi resets and Homebridge
   endpoint changes have not yet been reported. Host TLS success does not establish
   S7 certificate trust or IoT-to-server firewall access.
@@ -64,10 +80,11 @@ Read this section first when resuming in a new chat.
 
 ## Next steps
 
-1. Save the post-import runtime with the local backup helper and compare its
-   per-robot schedule counts with the Roborock app. Do not rerun the installation
-   helper or cloud import merely to continue. Disconnected robots are expected
-   until onboarding; imported names do not prove robot connectivity.
+1. Install the tested combined schedule/UI image using the local update helper.
+   Keep the existing runtime data/configuration and Nginx certificate paths.
+   Do not rerun the first-start helper or cloud import merely to continue.
+   Disconnected robots are expected until onboarding; imported names do not
+   prove robot connectivity. The post-import runtime backup is already verified.
 2. Finish/cancel any active Homebridge pause/delay and restore the intended normal
    schedule settings before taking the migration snapshot.
 3. While both robots are still on cloud, record available maps, floors, no-go zones,
