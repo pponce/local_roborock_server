@@ -484,6 +484,32 @@ Read this section first when resuming in a new chat.
   including duplicate/cycle handling. No live gateway execution of this
   expanded diagnostic has been reported yet. Await that output before
   identifying a specific rule or requesting another pairing/certificate change.
+- **Confirmed firewall port mismatch (2026-10-24 00:07 America/Los_Angeles):**
+  The expanded gateway readback reveals the first IoT-to-Internal ACCEPT
+  rule in `UBIOS_CUSTOM1_LAN_USER` has the correct TCP protocol,
+  source addresses `192.168.69.140` and `192.168.69.178`, and destination
+  `192.168.84.2`, but its destination port set
+  **UBIOS_policy_dst_port_34 contains 555 and 8881, not 443**.
+  The custom ACCEPT has zero hits; it is followed by an established/related
+  ACCEPT and then DROP. A new Downtown TCP connection to 443 therefore
+  misses the custom allow and is dropped by this chain. The aggregate DROP
+  count (339 packets) is not attributable entirely to Downtown.
+  The LAN-to-IoT chain begins with an unconditional ACCEPT, so the return
+  direction already permits the replies. Expanded subnet sets place
+  192.168.84.2 in Internal/LAN and 192.168.69.140 in IoT/CUSTOM1.
+  **Required fix in UniFi's existing "Allow Roborocks to local server" policy:
+  replace destination port 555 with 443, retaining 8881.** Keep source port
+  Any, the existing source/destination addresses, TCP/IPv4 and rule ordering.
+  Make this persistent policy edit through UniFi, not a temporary ipset or
+  iptables mutation over SSH. Port 555 is the Mint loopback HTTP backend;
+  robots reach Nginx HTTPS on 443. MQTT TLS remains 8881.
+  The readback establishes a definite blocker before TLS, not an Actalis
+  trust failure. Pedro subsequently reports that he replaced 555 with 443
+  in the rule. The effective post-edit rule and robot connection have not yet
+  been observed. After UniFi applies it, check the dashboard for automatic
+  connection; if still disconnected, retry the same Downtown LocalRock
+  onboarding with the imported robot and existing HTTPS URL/Actalis setup.
+  Observe server samples/public-key recovery and actual connected status.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
@@ -504,18 +530,21 @@ Read this section first when resuming in a new chat.
 
 ## Next steps
 
-1. The combined schedule/UI image is installed and healthy. Continue with
-   Downtown's connection/TLS diagnostics; Wi-Fi provisioning succeeded but
-   server onboarding still lacks a public key and connection confirmation.
-   Actalis issuance, deployment and both Nginx frontend TLS 1.2 checks are
-   complete. Refresh Downtown's dashboard status first; if still disconnected,
-   retry onboarding in LocalRock against `https://api-roborock.onefallday.com`,
+1. Pedro reports correcting the UniFi IoT-to-Internal firewall mismatch:
+   the existing "Allow Roborocks to local server" policy now uses destination
+   TCP port **443** in place of **555**, with **8881** retained. Source and
+   destination IPs and the return direction were already correct. Actual
+   robot connectivity after the edit remains to be tested.
+   The combined schedule/UI image is healthy, and Actalis issuance/deployment
+   plus host-side HTTPS/MQTT TLS 1.2 checks are complete. After UniFi applies the
+   change, refresh Downtown's dashboard status. If still disconnected, retry
+   onboarding in LocalRock against `https://api-roborock.onefallday.com`,
    selecting the imported Downtown device. Observe query samples/public-key
    recovery and actual connection. Use only a Wi-Fi reset if a new pairing
    cycle is needed. Do not rerun the image updater, first-start helper or cloud
-   import merely to continue.
-   Disconnected robots are expected until onboarding; imported names do not
-   prove robot connectivity. The post-import runtime backup is already verified.
+   import merely to continue. Robot acceptance of Actalis remains unverified.
+   Imported names do not prove connectivity. The post-import runtime backup
+   is already verified.
 2. Finish/cancel any active Homebridge pause/delay and restore the intended normal
    schedule settings before taking the migration snapshot.
 3. While both robots are still on cloud, record available maps, floors, no-go zones,
