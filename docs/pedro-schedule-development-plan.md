@@ -17,9 +17,11 @@ Read this section first when resuming in a new chat.
 - Development checkout: `/home/pedro/devProjects/local_roborock_server`.
   Runtime: `/opt/local_roborock_server`. Docker data: `/var/lib/docker`.
   All backups stay under the checkout's ignored `backups/` directory.
-- Installed image: `local/roborock-server:schedule-7e07021b6f51`, built from
-  `7e07021b6f51fc773e7e08166e8cc5220826025c`. Pulling newer notes/scripts does not
-  change that image; the runtime's `SOURCE_COMMIT` records the build.
+- Installed image: `local/roborock-server:schedule-ui`, built from
+  `a5a46600845f4b137e14e334ef733341b61e63e6` on `SCHEDULE_SUPPORT_UI_TEST`.
+  Pedro reported `LOCAL UI UPDATE COMPLETE`, container healthy, and exit status 0
+  on October 23 Pacific time (October 24 UTC). The runtime's `SOURCE_COMMIT`
+  records this build; pulling newer repository notes alone does not change it.
 - Host: `192.168.84.2`; gateway/DNS: `192.168.84.1`. The local A record for
   `api-roborock.onefallday.com` resolves correctly from the Linux host.
 - Nginx stream support is installed/loaded; Nginx UI's self-check fixes created
@@ -77,10 +79,29 @@ Read this section first when resuming in a new chat.
   the server container. It keeps the network, imported data, config, and Nginx
   certificate paths. Do not publish the helper or run the first-start installer.
   Pedro explicitly waived an additional backup/rollback image for this UI change.
-  Deployment has not yet been reported; the live image remains the schedule-only
-  image above until a successful update report. The helper is prepared for Pedro
-  to create/run over SSH; preparing it here does not install it on his machine.
-  Onboarding device/OS still needs to be identified before giving its launcher.
+  Deployment is confirmed: the local helper completed with status 0 and the
+  container is healthy. Existing data/configuration were retained, Nginx stayed
+  unchanged, and no robot pairing or Homebridge changes were performed.
+- Pedro selected his MacBook Pro, then offered to use LocalRock if easier.
+  The next instructions use LocalRock's phone onboarding for Downtown; the Mac
+  GUI remains a diagnostic fallback. LocalRock's current source was checked:
+  normal login uses the HTTPS server root plus local email/six-digit PIN;
+  Add vacuum separately uses the dashboard admin password to load imported
+  devices and start a session for the selected existing device ID. Select
+  Downtown Rock, enter the IoT 2.4 GHz SSID/password and `America/Los_Angeles`.
+  App URL: `https://api-roborock.onefallday.com` (no `/admin`, default port 443).
+  Independently allow Downtown's IoT traffic to `192.168.84.2` TCP 443/8881.
+  The old AAAA record's removal has not been confirmed; use IPv4-only DNS for
+  this first test because MQTT TLS currently binds only to `192.168.84.2`.
+  Pedro has installed LocalRock on his iPhone. Neither phone login nor pairing
+  has yet been reported. Leave Uptown and
+  Homebridge on cloud while Downtown's current Let's Encrypt chain is tested.
+- A private Mac setup helper was prepared but has not been delivered/run. If
+  needed later, it uses local Terminal outside SSH and keeps the three pinned
+  onboarding files plus uv/Python/cache under
+  `~/devProjects/local_roborock_server/local-work/onboarding/`, with `launch.command`.
+  The Mac GUI uses `api-roborock.onefallday.com:443`, the dashboard password,
+  timezone `America/Los_Angeles`, country `us`, and no camera domain for S7.
 - Available map records, a Homebridge backup, robot Wi-Fi resets and Homebridge
   endpoint changes have not yet been reported. Host TLS success does not establish
   S7 certificate trust or IoT-to-server firewall access.
@@ -91,9 +112,9 @@ Read this section first when resuming in a new chat.
 
 ## Next steps
 
-1. Install the tested combined schedule/UI image using the local update helper.
-   Keep the existing runtime data/configuration and Nginx certificate paths.
-   Do not rerun the first-start helper or cloud import merely to continue.
+1. The combined schedule/UI image is installed and healthy. Continue with
+   Downtown's network validation and LocalRock onboarding. Do not rerun the image
+   updater, first-start helper or cloud import merely to continue.
    Disconnected robots are expected until onboarding; imported names do not
    prove robot connectivity. The post-import runtime backup is already verified.
 2. Finish/cancel any active Homebridge pause/delay and restore the intended normal
@@ -107,9 +128,10 @@ Read this section first when resuming in a new chat.
    Counting imported jobs alone does not verify those timer records. Cloud import
    does not create a restorable map backup.
 5. Verify IoT DNS plus TCP 443/8881 access before resetting Downtown's Wi-Fi.
-   Select an onboarding method: the project's GUI on a separate Wi-Fi computer,
-   or LocalRock on a phone. The GUI uses `api-roborock.onefallday.com:443` and the
-   local dashboard password. The Linux server stays connected to its LAN.
+   Use LocalRock on a phone: log in with the local email/PIN, then Add vacuum,
+   dashboard admin password, Load vacuums, and select imported Downtown Rock.
+   The Linux server stays connected to its LAN. Follow the app's Wi-Fi reset and
+   hotspot/reconnect flow. If diagnostics are insufficient, use the Mac GUI.
 6. The current Homebridge instance uses one server for all devices. Pedro agreed
    to validate one robot locally first (temporarily losing its cloud connection
    in Homebridge), move the second, then switch Homebridge once. The capture
