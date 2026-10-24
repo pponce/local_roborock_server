@@ -510,6 +510,33 @@ Read this section first when resuming in a new chat.
   connection; if still disconnected, retry the same Downtown LocalRock
   onboarding with the imported robot and existing HTTPS URL/Actalis setup.
   Observe server samples/public-key recovery and actual connected status.
+- **First reported server sample after the firewall correction (2026-10-24):**
+  Pedro retried Downtown onboarding twice after replacing 555 with 443.
+  The first attempt showed no progress; the second showed **one server sample**,
+  but Downtown was still not connected. No full status/error or public-key
+  state was supplied. Treat this as initial onboarding progress, not proof
+  that the complete HTTPS/MQTT flow is working.
+  The exact deployed UI/schedule commit `a5a46600845f4b137e14e334ef733341b61e63e6`
+  was inspected: `device_key_recovery.py::maybe_recover_async` requires at
+  least two signature samples before attempting RSA public-key recovery.
+  The reported query counter counts stored canonical query/signature pairs.
+  With only one sample and no existing key, waiting for more signed requests
+  is expected. The vacuum identity public key is separate from the server TLS
+  certificate; obtaining a sample is evidence of an HTTPS request reaching
+  the backend, not confirmation of MQTT connectivity or which shared HTTPS
+  certificate was served.
+  Upstream onboarding guidance explicitly permits repeated pairing cycles
+  while the key is missing, several minutes for recovery, then one final
+  cycle after the key is ready. Some vacuums need 2–4 cycles; this is not a
+  guarantee for this model or a reason to keep retrying indefinitely.
+  Next: check the key state; if collecting/missing, run one more Downtown
+  LocalRock Wi-Fi pairing cycle with the same imported robot/server settings.
+  Rejoin normal Wi-Fi and allow up to five minutes for reported progress.
+  If recovery is running, wait for it; if the key is ready but the robot is
+  disconnected, run the final pairing cycle. If it stays at one sample or
+  reports an error, collect the complete LocalRock status and targeted server
+  diagnostics rather than changing certificates or repeating firewall checks.
+  [Upstream onboarding expectations](https://python-roborock.github.io/local_roborock_server/onboarding/#what-to-expect).
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
@@ -530,21 +557,23 @@ Read this section first when resuming in a new chat.
 
 ## Next steps
 
-1. Pedro reports correcting the UniFi IoT-to-Internal firewall mismatch:
-   the existing "Allow Roborocks to local server" policy now uses destination
-   TCP port **443** in place of **555**, with **8881** retained. Source and
-   destination IPs and the return direction were already correct. Actual
-   robot connectivity after the edit remains to be tested.
-   The combined schedule/UI image is healthy, and Actalis issuance/deployment
-   plus host-side HTTPS/MQTT TLS 1.2 checks are complete. After UniFi applies the
-   change, refresh Downtown's dashboard status. If still disconnected, retry
-   onboarding in LocalRock against `https://api-roborock.onefallday.com`,
-   selecting the imported Downtown device. Observe query samples/public-key
-   recovery and actual connection. Use only a Wi-Fi reset if a new pairing
-   cycle is needed. Do not rerun the image updater, first-start helper or cloud
-   import merely to continue. Robot acceptance of Actalis remains unverified.
-   Imported names do not prove connectivity. The post-import runtime backup
-   is already verified.
+1. The UniFi port mismatch is corrected per Pedro: IoT-to-Internal allows
+   destination TCP **443 and 8881** to the server. Two subsequent Downtown
+   pairing attempts produced no progress, then **one server sample**;
+   the robot is still disconnected and its current public-key state was not
+   supplied. This is the first reported onboarding request after the fix.
+   The deployed code needs at least two signature samples to recover the
+   vacuum's public key. Check the status: while collecting/missing, run one
+   more LocalRock Wi-Fi pairing cycle for the imported Downtown robot against
+   `https://api-roborock.onefallday.com`. Return the phone to normal Wi-Fi and
+   allow up to five minutes for progress. Wait if key recovery is running;
+   after the key is ready, another final cycle may be needed to connect.
+   If one more completed cycle remains at one sample or shows an error,
+   obtain the full status and targeted server diagnostics before more changes.
+   Keep the current Actalis setup for this test; MQTT/full connectivity is
+   still unverified. The schedule/UI image and prior host TLS checks are good.
+   Do not repeat cloud import, image installation, or firewall investigations
+   merely because one sample is insufficient. The post-import backup is verified.
 2. Finish/cancel any active Homebridge pause/delay and restore the intended normal
    schedule settings before taking the migration snapshot.
 3. While both robots are still on cloud, record available maps, floors, no-go zones,
