@@ -106,9 +106,10 @@ using direct terminal input/output and unbuffered Python resolved it. The second
 SSH session completed with status 0 and the detached server is healthy.
 
 The first-start helper is retained locally for reference. Do not rerun it now;
-use the deployed Compose service for normal operations. Neither robot has been
-moved and cloud import/backups still need completion. The old interrupted SSH
-session can be closed without stopping the running server.
+use the deployed Compose service for normal operations. Cloud import completed
+and both names appear; neither robot has been moved. The post-import runtime
+backup, schedule-count check and map/Homebridge records are next. The old
+interrupted SSH session was closed after the successful startup.
 
 The helper reuses the image recorded in `/opt/local_roborock_server/SOURCE_COMMIT`
 (currently `local/roborock-server:schedule-7e07021b6f51`). Pulling deployment
@@ -144,8 +145,8 @@ If it reports a failure after startup, inspect that container rather than
 rerunning the installer or removing persistent data.
 
 Remaining before robot migration: test access from the IoT network, capture
-available maps and schedule records under this checkout's `backups/`, import
-cloud data, and then pair one vacuum. Host certificate checks do not establish
+available maps and schedule records under this checkout's `backups/`, archive
+the imported runtime, and then pair one vacuum. Host certificate checks do not establish
 certificate trust on either robot. Schedule hardware testing remains pending.
 
 The prepared direct-TLS helper (`configure-pedro-docker.sh`) remains an

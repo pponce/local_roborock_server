@@ -45,9 +45,18 @@ Read this section first when resuming in a new chat.
   The sibling `downtown/` and `uptown/` directories are ready for exports.
 - Successful setup log:
   `/home/pedro/devProjects/local_roborock_server/local-work/configure-nginx-20261024T003002Z-aX8vfh5A.log`.
-- Robot backups, cloud import, Wi-Fi resets and Homebridge endpoint changes have
-  not yet been reported. Host TLS success does not establish S7 certificate trust
-  or IoT-to-server firewall access.
+- Cloud import succeeded: Pedro reports that both robot names appear in the
+  dashboard. Schedule counts/completeness have not yet been checked. The original
+  stalled SSH terminal was closed after the successful startup in the second.
+- A local-only `local-work/setup/scripts/backup-after-cloud-import.py` helper
+  is prepared for a consistent archive of `/opt/local_roborock_server`, followed
+  by schedule counts and a health check. It briefly stops and restarts the same
+  container, retaining the Docker network. Local simulations covered success,
+  archive failure, interruption and stop failure; Pedro has not reported running
+  it yet. All output stays in a new ignored dated `backups/` directory.
+- Available map records, a Homebridge backup, robot Wi-Fi resets and Homebridge
+  endpoint changes have not yet been reported. Host TLS success does not establish
+  S7 certificate trust or IoT-to-server firewall access.
 - Personal files were restored under ignored `local-work/setup/`; the local
   checkout reached `08ef5ca`. Helper path and empty-IPAM fixes passed seven host
   probe tests. The full Python suite had passed on 3.11/3.13 and the Docker image
@@ -55,21 +64,24 @@ Read this section first when resuming in a new chat.
 
 ## Next steps
 
-1. Open `https://api-roborock.onefallday.com/admin` from a LAN browser and sign
-   in with the new local dashboard password. Leave new connections enabled for
-   onboarding. Do not rerun the installation/startup helper.
+1. Save the post-import runtime with the local backup helper and compare its
+   per-robot schedule counts with the Roborock app. Do not rerun the installation
+   helper or cloud import merely to continue. Disconnected robots are expected
+   until onboarding; imported names do not prove robot connectivity.
 2. Finish/cancel any active Homebridge pause/delay and restore the intended normal
    schedule settings before taking the migration snapshot.
 3. While both robots are still on cloud, record available maps, floors, no-go zones,
    schedules, rooms and settings under the dated `backups/` directory. Also save
    the Homebridge backup there. App-native map backups can remain robot/cloud-side;
    screenshots and raw map captures are not verified restorable map backups.
-4. Use dashboard **Cloud Import → Send Code → Fetch Data** with the real Roborock
-   email and the separately emailed cloud code (not the local six-digit PIN).
-   Confirm both imported names; disconnected status is expected before onboarding.
-5. Validate imported jobs and native timer references, archive the complete runtime
-   consistently after import, and verify IoT DNS plus TCP 443/8881 access before
-   resetting Downtown's Wi-Fi. No robot migration is implied by successful import.
+4. Keep a current Homebridge schedule capture while both robots remain on cloud,
+   so imported jobs can be compared with robot-native timer references and states.
+   Counting imported jobs alone does not verify those timer records. Cloud import
+   does not create a restorable map backup.
+5. Verify IoT DNS plus TCP 443/8881 access before resetting Downtown's Wi-Fi.
+   Select an onboarding method: the project's GUI on a separate Wi-Fi computer,
+   or LocalRock on a phone. The GUI uses `api-roborock.onefallday.com:443` and the
+   local dashboard password. The Linux server stays connected to its LAN.
 6. The current Homebridge instance uses one server for all devices. Pedro agreed
    to validate one robot locally first (temporarily losing its cloud connection
    in Homebridge), move the second, then switch Homebridge once. The capture

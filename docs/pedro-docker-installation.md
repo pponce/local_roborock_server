@@ -9,9 +9,11 @@ not an upstream installation guide. Schedule hardware validation is pending.
 
 Current checkpoint: Docker startup behind Nginx completed October 24 around
 00:30 UTC. The container is healthy, HTTPS returned 200, and MQTT TLS verified.
-Stages 1–2 below describe the completed setup. Continue at Stage 3; robot backups,
-cloud import and onboarding are still pending. See the recovery plan for the
-initial backup and setup-log paths.
+Cloud import also completed and both robot names appear. Stages 1–2 below
+describe the completed setup. Continue with Stage 3's post-import runtime backup,
+schedule-count check and map/Homebridge records; onboarding remains pending.
+The local-only `backup-after-cloud-import.py` helper is prepared but has not yet
+been reported as run. See the recovery plan for the initial backup and log paths.
 
 ## Stage 1: Docker, source checkout, and image
 
