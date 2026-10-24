@@ -167,8 +167,9 @@ Read this section first when resuming in a new chat.
 - Pedro's requested fallback if the next attempt remains unsuccessful: retain
   Let's Encrypt for all other Nginx sites and for Uptown S7 MaxV; obtain a separate
   Actalis or SSL.com certificate for `api-roborock.onefallday.com` for Downtown
-  S7. No certificate has been ordered, issued or installed for this fallback,
-  and no renewal or Nginx settings have been changed.
+  S7. The first Actalis order was rejected for quota with one-year credentials;
+  issuance using the corrected 90-day credentials remains pending. Local
+  renewal scripts are now updated; Nginx certificate selection is unchanged.
   A single-hostname/single-container design is feasible using Nginx maps from
   client source address to certificate/key paths in both HTTP and stream TLS.
   Nginx 1.24 supports variable certificate paths. Before configuring it, confirm
@@ -255,7 +256,30 @@ Read this section first when resuming in a new chat.
   installation idempotence, unknown-edit refusal, DNS/API failures,
   preservation of Let's Encrypt files, and reload retry without forced issuance.
   These tests do not establish successful live issuance or robot compatibility.
-  Installation/issuance is still awaiting Pedro's run and result.
+  The first local installation has now completed; issuance failed before DNS
+  challenge setup with `Not enough quota`, after successful ACME account
+  registration. Pedro confirmed that the supplied EAB credentials came from
+  the one-year category and has replaced both .env values with the
+  **Domain Validation — 90 days** credentials. The account email is unchanged.
+  No certificate has yet been issued or selected in Nginx.
+  Setup log: `local-work/actalis-setup-yWCX6X0x.log`.
+  Changed-script backup:
+  `backups/2026-10-23-203033-certificate-scripts-t_s5mtqx/`.
+  Mode 1, the cleanup JSON fix, local helper installation, and the existing
+  daily entrypoint's Actalis invocation were confirmed by the installer output.
+- The next retry must use a fresh local Actalis ACME registration because EAB
+  values apply at registration; editing .env does not rebind an existing
+  cached account. A local-only `retry-actalis-90days.sh` SSH block was prepared.
+  It validates the corrected .env via the existing helper, takes its renewal
+  lock, refuses account reset if any Actalis certificate/renewal files exist,
+  and moves only `certs/actalis/accounts/` into a private backup directory
+  below the Roborock checkout's `backups/`. It then calls the existing local
+  `run.sh renew` helper. It does not unregister remote CA accounts, access
+  Let's Encrypt account state, edit .env, or change Nginx certificate selection.
+  Shell/Python syntax and four offline account-state checks passed.
+  The corrected-key retry and certificate issuance remain unconfirmed.
+  Sources: [Actalis quota/account FAQ](https://guide.actalis.com/faq/SSL/ACME),
+  [90-day credential selection in OpenVPN's official integration guide](https://openvpn.net/as-docs/v3/tutorials/tutorial--acme-ssl-certificate-access-server/#issue-a-certificate-with-actalis).
   After installation, rerun locally with
   `sudo bash /home/pedro/dynamicDnsScript/local-roborock-cert/run.sh setup`.
 - Many-year publicly trusted leaf certificates are not available under current
