@@ -4,7 +4,7 @@ Recorded: 2026-10-23. This is a working plan for the
 [pponce fork](https://github.com/pponce/local_roborock_server), not the general
 installation guide or a claim that schedule support is complete.
 
-## Recovery checkpoint — October 24, 2026 (UTC)
+## Recovery checkpoint — October 23, 2026 (Pacific; October 24 UTC)
 
 Read this section first when resuming in a new chat.
 
@@ -31,9 +31,11 @@ Read this section first when resuming in a new chat.
   its stream directories/include. Nginx syntax passes and it listens on 443 and
   `192.168.84.2:8881`. Docker now publishes backends only on
   `127.0.0.1:555` and `127.0.0.1:18881`.
-- Both Nginx listeners use `/etc/nginx/ssl/onefallday/fullchain.pem` and
-  `/etc/nginx/ssl/onefallday/privkey.pem`. The certificate deploy hook matches the
-  reviewed repository script; successful deployments update these and reload Nginx.
+- Both Nginx listeners still select the existing Let's Encrypt files,
+  `/etc/nginx/ssl/onefallday/fullchain.pem` and
+  `/etc/nginx/ssl/onefallday/privkey.pem`. Actalis issuance and deployment have
+  now succeeded, but switching the Roborock HTTPS/MQTT certificate directives
+  is the next step and has not yet been confirmed. Other websites retain Let's Encrypt.
 - Startup succeeded October 24, 2026 around 00:30 UTC after the local terminal
   fix. The server container `roborock-local-server` is healthy; HTTPS `/admin`
   returned 200 and MQTT TLS on 8881 verified successfully using TLS 1.3.
@@ -167,23 +169,18 @@ Read this section first when resuming in a new chat.
   replies to server-initiated traffic do not establish that permission.
   No further Wi-Fi reset, DNS, certificate, firewall or Nginx change has been
   requested by these read-only checks.
-- Pedro's requested fallback if the next attempt remains unsuccessful: retain
-  Let's Encrypt for all other Nginx sites and for Uptown S7 MaxV; obtain a separate
-  Actalis or SSL.com certificate for `api-roborock.onefallday.com` for Downtown
-  S7. The first Actalis order was rejected for quota with one-year credentials;
-  issuance using the corrected 90-day credentials remains pending. Local
-  renewal scripts are now updated; Nginx certificate selection is unchanged.
-  A single-hostname/single-container design is feasible using Nginx maps from
-  client source address to certificate/key paths in both HTTP and stream TLS.
-  Nginx 1.24 supports variable certificate paths. Before configuring it, confirm
-  the original source IP reaches Nginx, reserve the robot addresses, handle or
-  defer IPv6, and check SNI/default-server selection on shared HTTPS 443.
-  If S7 does not select the intended HTTPS virtual host, a dedicated Roborock
-  LAN listener address is a fallback that avoids changing certificates for
-  unrelated websites. The server's app/client login responses use the configured
-  API/MQTT hostname, while the bootstrap region handler can reflect the incoming
-  Host header. A two-hostname alternative would therefore need end-to-end
-  validation; the proposed source-IP mapping retains the existing hostname.
+- Pedro's latest certificate plan supersedes the earlier per-robot split:
+  select the new Actalis certificate for both Roborock HTTPS 443 and MQTT TLS
+  8881; test Downtown S7 first, then test Uptown S7 MaxV with **the same Actalis
+  certificate** before considering Let's Encrypt for Uptown. Both use
+  `api-roborock.onefallday.com`. If both work, retain one Actalis binding for
+  the Roborock service and Let's Encrypt for other websites. No source-IP
+  certificate maps or second hostname are needed for this first test.
+  A mixed-certificate setup remains only a fallback if hardware evidence
+  justifies it. If Downtown sends no SNI and reaches another HTTPS virtual host,
+  investigate default-server selection or a dedicated Roborock listener before
+  concluding the Actalis chain is incompatible. Network reachability remains
+  unproven from Downtown; earlier captures showed no traffic to ports 443/8881.
 - Actalis is a reasonable first certificate fallback: its current free plan
   provides single-domain 90-day DV certificates with unlimited ACME issuance;
   SSL.com also supports automated ACME issuance/renewal. The upstream tested
@@ -248,9 +245,9 @@ Read this section first when resuming in a new chat.
   call in the existing daily entrypoint. Its certificate request failed before
   DNS challenge setup with `Not enough quota`, after successful ACME account
   registration. Pedro confirmed he had used the one-year EAB credential pair.
-  He has replaced both .env values with **Domain Validation — 90 days** keys;
-  the account email is unchanged. No certificate issuance or Nginx selection
-  change has been confirmed.
+  He replaced both .env values with **Domain Validation — 90 days** keys;
+  the account email is unchanged. The subsequent corrected-key issuance
+  succeeded as recorded below; Nginx certificate selection still awaits a change.
   Setup log: `local-work/actalis-setup-yWCX6X0x.log`.
   Changed-script backup:
   `backups/2026-10-23-203033-certificate-scripts-t_s5mtqx/`.
@@ -285,10 +282,37 @@ Read this section first when resuming in a new chat.
   No account backup is made and no remote CA account is unregistered.
   The update method was tested to preserve unrelated working changes; inline
   cleanup guards were tested with temporary account/certificate directories.
-  Local checkout update and corrected-key issuance are still awaiting Pedro's
-  report. Nginx still selects the existing Let's Encrypt certificate.
+  Pedro has now completed this block successfully. The initial Git fetch failed
+  with insufficient permission to write `.git/objects`; an inline repair of
+  only the Git metadata ownership/write permissions restored normal fetching.
+  The local branch fast-forwarded from `89570a9` to `be421a9`, and all 13
+  offline tests passed. Messages about DNS cleanup, certificate deployment and
+  Nginx reload before the test summary came from mocked tests.
+  The unused failed registration was cleared without a backup, as requested.
+  Keep the newly issued certificate's account for ordinary future renewals;
+  do not repeat account cleanup.
   Sources: [Actalis quota/account FAQ](https://guide.actalis.com/faq/SSL/ACME),
   [90-day credential selection in OpenVPN's official guide](https://openvpn.net/as-docs/v3/tutorials/tutorial--acme-ssl-certificate-access-server/#issue-a-certificate-with-actalis).
+- **Actalis issuance and deployment confirmed, October 23 Pacific time:**
+  new ACME account registration succeeded with the 90-day keys; DNS validation
+  propagated to all five checked nameservers and the temporary challenge was
+  removed. Certbot obtained the certificate; hostname/chain, expiry and key
+  matching checks passed, provider-specific copies were deployed, `nginx -t`
+  passed, and Nginx reloaded. Update/retry exit status was 0.
+  Public issuer: `Actalis Domain Validated TLS Server RSA CA 2025`.
+  Validity: `2026-10-24 04:11:42 UTC` through `2027-01-24 05:10:42 UTC`.
+  SHA256 fingerprint:
+  `5D:0F:44:58:40:28:12:12:57:69:57:9E:5D:6C:76:E0:55:94:3F:1C:D1:67:DE:64:8C:F2:A1:F3:12:C1:63:BA`.
+  The apparent pause after requesting the certificate was followed by the
+  completed DNS-hook output; no stalled process was established.
+  Daily checks use the existing root 03:00 entry through `requestCert.sh`
+  and the helper's isolated `certs/actalis/` state. Certbot's generic scheduled-task
+  message does not independently verify a system timer covers this custom state.
+  A future scheduled renewal has not yet been observed.
+  Nginx's **file deployment succeeded but certificate selection is unchanged**.
+  Next, change only the Roborock HTTPS site and MQTT stream certificate/key
+  directives to the Actalis filenames above, validate/reload Nginx, verify the
+  served certificate on 443/8881, and retry Downtown. Robot trust is unconfirmed.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
@@ -312,8 +336,10 @@ Read this section first when resuming in a new chat.
 1. The combined schedule/UI image is installed and healthy. Continue with
    Downtown's connection/TLS diagnostics; Wi-Fi provisioning succeeded but
    server onboarding still lacks a public key and connection confirmation.
-   Keep the existing certificates for this next observed attempt. Do not rerun the image
-   updater, first-start helper or cloud import merely to continue.
+   The Actalis certificate is now issued and deployed. Select it in the Roborock
+   HTTPS/MQTT Nginx configuration, verify both frontends serve it, and retry
+   Downtown. Do not rerun the image updater, first-start helper or cloud import
+   merely to continue.
    Disconnected robots are expected until onboarding; imported names do not
    prove robot connectivity. The post-import runtime backup is already verified.
 2. Finish/cancel any active Homebridge pause/delay and restore the intended normal
@@ -338,12 +364,12 @@ Read this section first when resuming in a new chat.
    Region **Custom server**, URL `https://api-roborock.onefallday.com`, and the
    local email/PIN after logging out of the plugin cloud session. Preserve
    existing accessory identities and pause/delay policy.
-7. Pedro explicitly chose Downtown S7 as the first robot, using the existing
-   Let's Encrypt certificate to test whether the reported failures reproduce.
-   Start/import/back up first, then onboard only Downtown and retain server/Nginx
-   diagnostics. Do not switch issuer based on other reports alone. Uptown and
-   Homebridge stay on cloud during this initial test. Cloud import includes jobs,
-   rooms and routines but is not a restorable map backup.
+7. Test Downtown S7 with Actalis first. Once its local connection works, test
+   Uptown S7 MaxV with that same certificate before trying Let's Encrypt for it.
+   Uptown and Homebridge remain on cloud during the Downtown test. Record real
+   HTTPS/MQTT connection evidence and robot state; host TLS verification alone
+   does not establish either robot's trust. Cloud import includes jobs, rooms
+   and routines but is not a restorable map backup.
 
 For a new chat, retrieve this note from GitHub and ask for recent local output.
 Do not assume access to files on Pedro's host. The machine's local setup files
