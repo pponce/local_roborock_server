@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Dashboard · Roborock Local Server</title>
+  <link rel="stylesheet" href="/admin/assets/admin.css">
+  <script id="projectSupport" type="application/json">__PROJECT_SUPPORT__</script>
+  <script src="/admin/assets/admin.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to dashboard</a>
+  <aside class="sidebar">
+    <a class="brand" href="/admin" aria-label="Roborock Local Server dashboard">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><circle cx="16" cy="17" r="10"/><path d="M11 9V7h10v2M10 21h12M13 13h6"/></svg></span>
+      <span>Roborock<span class="brand-subtitle">LOCAL SERVER</span></span>
+    </a>
+    <p class="nav-caption">MANAGE</p>
+    <nav aria-label="Dashboard sections">
+      <a href="#overview" class="nav-link"><span aria-hidden="true">◫</span> Overview</a>
+      <a href="#robots" class="nav-link"><span aria-hidden="true">◎</span> Vacuums</a>
+      <a href="#cloud-import" class="nav-link"><span aria-hidden="true">↓</span> Cloud import</a>
+      <a href="#connections" class="nav-link"><span aria-hidden="true">⇄</span> Connections</a>
+      <a href="#diagnostics" class="nav-link"><span aria-hidden="true">≡</span> Diagnostics</a>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="#support" class="support-nav"><span aria-hidden="true">♡</span> Support the project</a>
+      <button id="logout" class="button secondary" type="button">Sign out</button>
+    </div>
+  </aside>
+
+  <main id="main" class="main" tabindex="-1">
+    <header id="overview" class="page-header">
+      <div><p class="eyebrow">YOUR LOCAL SERVER</p><h1>Dashboard</h1><p class="muted">A clear view of your vacuums and connections.</p></div>
+      <div class="header-actions"><span id="lastUpdated" class="subtle">Connecting…</span><button id="refresh" class="button secondary" type="button"><span aria-hidden="true">↻</span> Refresh</button></div>
+    </header>
+    <p id="pageMessage" class="message" role="status" hidden></p>
+    <noscript><p class="message error">Enable JavaScript to load server status and use dashboard controls.</p></noscript>
+
+    <section class="overview-grid" aria-label="Server overview">
+      <article class="metric"><span class="metric-label">Server health</span><strong id="overall" class="metric-value">Connecting…</strong><span id="serviceSummary" class="subtle">Checking services</span></article>
+      <article class="metric"><span class="metric-label">Vacuums connected</span><strong id="connectedCount" class="metric-value">—</strong><span id="vacuumCount" class="subtle">Loading your inventory</span></article>
+      <article class="metric"><span class="metric-label">New connections</span><strong id="connectionState" class="metric-value">—</strong><span id="connectionHint" class="subtle">Checking access settings</span></article>
+    </section>
+
+    <section id="robots" class="section" aria-labelledby="robotsTitle">
+      <div class="section-heading"><div><h2 id="robotsTitle">Your vacuums</h2><p class="muted">Connection status and onboarding progress.</p></div><a class="text-link" href="https://python-roborock.github.io/local_roborock_server/onboarding/" target="_blank" rel="noopener noreferrer">Onboarding guide <span aria-hidden="true">↗</span></a></div>
+      <p id="vacuumError" class="message error" role="status" hidden></p>
+      <div id="vacuumSummary" class="vacuum-grid" aria-busy="true"><div class="empty-state"><span class="empty-symbol" aria-hidden="true">◎</span><h3>Looking for your vacuums</h3><p class="muted">Reading the server inventory…</p></div></div>
+    </section>
+
+    <div class="management-grid">
+      <section id="cloud-import" class="panel" aria-labelledby="cloudTitle">
+        <div class="panel-heading"><span class="section-icon" aria-hidden="true">↓</span><div><h2 id="cloudTitle">Cloud Import</h2><p class="muted">Bring your existing robots into the local inventory.</p></div></div>
+        <p class="helper">Use your Roborock account email. Importing data does not connect a vacuum to this server; follow the onboarding guide afterward.</p>
+        <form id="requestCodeForm" class="import-step">
+          <span class="step-number" aria-hidden="true">1</span>
+          <div class="step-content"><label for="email">Roborock account email</label><div class="input-action"><input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required><button id="sendCode" class="button secondary" type="submit">Send code</button></div></div>
+        </form>
+        <form id="importForm" class="import-step">
+          <span class="step-number" aria-hidden="true">2</span>
+          <div class="step-content"><label for="code">Email verification code</label><div class="input-action"><input id="code" name="code" type="text" autocomplete="one-time-code" placeholder="Code from Roborock" required disabled><button id="fetchData" class="button primary" type="submit" disabled>Import data</button></div><p id="codeHelp" class="helper">Request a code to continue.</p></div>
+        </form>
+        <p id="cloudResult" class="message" role="status" hidden></p>
+        <details class="technical"><summary>Import response details</summary><pre id="cloudDetails">No cloud request yet.</pre></details>
+      </section>
+
+      <section id="connections" class="panel" aria-labelledby="connectionsTitle">
+        <div class="panel-heading"><span class="section-icon" aria-hidden="true">⇄</span><div><h2 id="connectionsTitle">New Connections</h2><p class="muted">Choose when new clients can connect.</p></div></div>
+        <form id="connectionsForm">
+          <div class="connection-control"><div><label for="newConnectionsEnabled">Allow new connections</label><p id="connectionDescription" class="helper">Allow new app logins, onboarding, and first-time vacuum connections</p></div><label class="switch"><input id="newConnectionsEnabled" type="checkbox" aria-describedby="connectionDescription" disabled><span aria-hidden="true"></span></label></div>
+          <div class="save-row"><span id="unsavedChanges" class="subtle">Loading settings…</span><button id="saveConnections" class="button secondary" type="submit" disabled>Save changes</button></div>
+        </form>
+        <p id="authMeta" class="helper">Loading connection state…</p>
+        <p id="authResult" class="message" role="status" hidden></p>
+        <p id="pendingRecovery" class="helper" hidden></p>
+        <details class="technical"><summary>Protocol Sync Secret</summary><p class="helper">For the app redirect tool: <code>mitm_redirect.py --sync-secret …</code>. Keep this secret private.</p><label class="sr-only" for="adminSessionSecret">Protocol sync secret</label><div class="input-action"><input id="adminSessionSecret" type="password" readonly autocomplete="off"><button id="showSessionSecret" class="button secondary" type="button" aria-pressed="false">Show</button><button id="copySessionSecret" class="button secondary" type="button">Copy</button></div><p id="syncSecretMeta" class="helper" role="status"></p></details>
+      </section>
+    </div>
+
+    <section id="sessions" class="panel section" aria-labelledby="sessionsTitle">
+      <div class="section-heading"><div><h2 id="sessionsTitle">Protocol sessions</h2><p class="muted">Saved logins used by apps and integrations.</p></div><span id="sessionCount" class="badge neutral">Loading</span></div>
+      <div id="sessionList" class="session-list" aria-busy="true">Loading sessions…</div>
+    </section>
+
+    <section id="diagnostics" class="panel section" aria-labelledby="diagnosticsTitle">
+      <div class="section-heading"><div><h2 id="diagnosticsTitle">Diagnostics</h2><p class="muted">Service health and details for troubleshooting.</p></div><span class="badge neutral">Advanced</span></div>
+      <div id="serviceList" class="service-grid">Loading services…</div>
+      <div class="diagnostic-grid"><details class="technical"><summary>Raw health data</summary><pre id="health">Waiting for server…</pre></details><details class="technical"><summary>Raw vacuum data</summary><pre id="vacuums">Waiting for inventory…</pre></details></div>
+    </section>
+
+    <footer id="support" class="support-panel"><div><h2 id="supportTitle">Support this project</h2><p id="supportText" class="muted"></p></div><div id="supportLinks" class="support-links"></div></footer>
+    <p class="page-footer">Roborock Local Server · Built by the community</p>
+  </main>
+
+  <template id="vacuumTemplate"><article class="vacuum-card"><div class="vacuum-heading"><span class="vacuum-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><circle cx="32" cy="34" r="23"/><path d="M22 13V9h20v4M18 44h28"/><circle cx="32" cy="26" r="7"/><path d="M28 26h8"/></svg></span><span class="badge" data-field="connection"></span></div><h3 data-field="name"></h3><p class="model" data-field="model"></p><p class="vacuum-guidance" data-field="guidance"></p><details class="technical"><summary>Connection details</summary><dl class="detail-list"><div><dt>MQTT connection</dt><dd data-field="mqtt"></dd></div><div><dt>Public key</dt><dd data-field="key"></dd></div><div><dt>Query samples</dt><dd data-field="samples"></dd></div><div><dt>Device ID</dt><dd data-field="id"></dd></div></dl></details></article></template>
+  <template id="sessionTemplate"><article class="session-card"><div class="session-copy"><h3 data-field="name"></h3><p data-field="detail" class="helper"></p></div><button class="button danger" type="button">Remove session</button></article></template>
+</body>
+</html>

@@ -11,3 +11,5 @@ secrets/
 config.toml
 mitm_logs
 .tmp*
+node_modules/
+tests/browser/artifacts/
