@@ -79,10 +79,10 @@ with listeners on 443 and `192.168.84.2:8881`; backend ports 555/18881 were free
 Pedro explicitly does not want a backup for adding Nginx stream support.
 Run `sudo nginx -t` before applying later Nginx configuration changes.
 
-The container is not configured or started yet, so a 502 from the new HTTP
-proxy is expected until its backend is running. Backend ports and
-`external_tls` mode must match this plan; the direct-TLS helper cannot be used
-to start this proxy arrangement.
+The container is configured and healthy as of October 24 around 00:30 UTC.
+The dashboard returned 200 through Nginx and MQTT TLS verified on 8881. A 502
+now warrants checking backend health; it is no longer the expected initial state.
+Backend ports and `external_tls` mode must match this plan.
 
 Run this as Pedro:
 
@@ -99,21 +99,16 @@ and changes no services. Return the `START COPY HERE` / `END COPY HERE` section.
 
 ## First Docker startup
 
-Latest attempt: both live forwarding paths and frontend certificates passed,
-with measured proxy address `172.18.0.1`. Probe cleanup completed. The separate
-credential container reached its initial message but its prompt was not visible
-in SSH. A local-only launcher adjustment routes the credential process directly
-to the terminal and uses unbuffered Python; the host retry is pending. The
-actual server, cloud import and onboarding have not started.
+Completed October 24 around 00:30 UTC. Both live forwarding paths and frontend
+certificates passed, with measured proxy address `172.18.0.1`. The initial
+credential prompt stalled in the SSH/logging path; a local launcher adjustment
+using direct terminal input/output and unbuffered Python resolved it. The second
+SSH session completed with status 0 and the detached server is healthy.
 
-After preserving the local files and applying the local Compose compatibility fix,
-run as Pedro, without sudo before bash. Startup is still pending on his host:
-
-```bash
-{
-  bash /home/pedro/devProjects/local_roborock_server/local-work/setup/scripts/configure-pedro-nginx-docker.sh
-}
-```
+The first-start helper is retained locally for reference. Do not rerun it now;
+use the deployed Compose service for normal operations. Neither robot has been
+moved and cloud import/backups still need completion. The old interrupted SSH
+session can be closed without stopping the running server.
 
 The helper reuses the image recorded in `/opt/local_roborock_server/SOURCE_COMMIT`
 (currently `local/roborock-server:schedule-7e07021b6f51`). Pulling deployment

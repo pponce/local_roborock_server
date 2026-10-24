@@ -24,43 +24,52 @@ Read this section first when resuming in a new chat.
   `api-roborock.onefallday.com` resolves correctly from the Linux host.
 - Nginx stream support is installed/loaded; Nginx UI's self-check fixes created
   its stream directories/include. Nginx syntax passes and it listens on 443 and
-  `192.168.84.2:8881`. Backends 555 and 18881 were free at the last inspection.
+  `192.168.84.2:8881`. Docker now publishes backends only on
+  `127.0.0.1:555` and `127.0.0.1:18881`.
 - Both Nginx listeners use `/etc/nginx/ssl/onefallday/fullchain.pem` and
   `/etc/nginx/ssl/onefallday/privkey.pem`. The certificate deploy hook matches the
   reviewed repository script; successful deployments update these and reload Nginx.
-- First startup attempt: checkout advanced to `08ef5ca` and personal helpers
-  were restored under ignored `local-work/setup/`. Seven local probe checks
-  passed. Live HTTPS/MQTT forwarding and both frontend certificates passed;
-  the measured Docker gateway is `172.18.0.1`.
-- The temporary route probe was removed. The separate credential container
-  reached "Choose LOCAL credentials" but the SSH session showed no prompt;
-  its Python process remained waiting after five minutes. Terminal/output
-  handling is suspected. A local launcher adjustment gives credential setup
-  direct terminal input/output and unbuffered Python; retry is pending.
-- Last confirmed state: the actual server has not started. No robot backups,
-  cloud import, re-pairing or Homebridge endpoint changes have occurred.
-- The full Python suite passed on 3.11/3.13 and the Docker image built. A personal
-  installer smoke test found overly strict handling of empty Compose IPAM
-  defaults. A correction and regression test are prepared locally; successful
-  Docker startup of that corrected installer has not yet been reported.
+- Startup succeeded October 24, 2026 around 00:30 UTC after the local terminal
+  fix. The server container `roborock-local-server` is healthy; HTTPS `/admin`
+  returned 200 and MQTT TLS on 8881 verified successfully using TLS 1.3.
+  The measured/trusted Docker proxy is `172.18.0.1`.
+- Local dashboard credentials and protocol-login email/PIN were chosen at hidden
+  prompts. Do not collect or publish the password, PIN or configuration contents.
+- The first credential container stalled at its hidden input prompt. Routing the
+  interactive Docker command directly to the SSH terminal and using unbuffered
+  Python resolved it. The retry completed in the second SSH session with status 0.
+  The original SSH session can be interrupted/closed; it belongs to the removed
+  temporary helper, not the detached running server. Do not rerun first-start setup.
+- Initial runtime backup (before server startup, not a robot/cloud-data backup):
+  `/home/pedro/devProjects/local_roborock_server/backups/2026-10-24-003047-tHRMr16Q/server/runtime-before-first-start.tar.gz`.
+  The sibling `downtown/` and `uptown/` directories are ready for exports.
+- Successful setup log:
+  `/home/pedro/devProjects/local_roborock_server/local-work/configure-nginx-20261024T003002Z-aX8vfh5A.log`.
+- Robot backups, cloud import, Wi-Fi resets and Homebridge endpoint changes have
+  not yet been reported. Host TLS success does not establish S7 certificate trust
+  or IoT-to-server firewall access.
+- Personal files were restored under ignored `local-work/setup/`; the local
+  checkout reached `08ef5ca`. Helper path and empty-IPAM fixes passed seven host
+  probe tests. The full Python suite had passed on 3.11/3.13 and the Docker image
+  built. Later notes-only commits do not change the deployed image.
 
 ## Next steps
 
-1. Completed: personal setup files were preserved under `local-work/setup/`
-   before the cleanup pull. Previous public versions remain in Git history.
-2. Completed: helper paths and the empty-IPAM correction were applied locally.
-   Personal files were last published in `8215eaf657a1ac3100fe8f8a3e79b58dc42380db`.
-   Subsequent fixes, including terminal handling, remain local-only.
-3. Stop only the stalled credential setup container, apply the local terminal
-   adjustment, then retry the startup helper using the existing image. It verifies
-   both proxy routes and the actual Docker gateway, then creates external-TLS
-   configuration with loopback-only backends on 555/18881 and public ports 443/8881.
-4. Choose a local dashboard password and six-digit app/plugin PIN at hidden
-   prompts. The usual email is acceptable. These do not change the cloud account;
-   cloud import later uses a separate emailed Roborock verification code.
-5. Verify the dashboard and IoT access. Record/export available maps, schedules,
-   rooms and settings under `backups/` before moving a vacuum. Import cloud data,
-   then onboard one robot and test schedules before adding the second.
+1. Open `https://api-roborock.onefallday.com/admin` from a LAN browser and sign
+   in with the new local dashboard password. Leave new connections enabled for
+   onboarding. Do not rerun the installation/startup helper.
+2. Finish/cancel any active Homebridge pause/delay and restore the intended normal
+   schedule settings before taking the migration snapshot.
+3. While both robots are still on cloud, record available maps, floors, no-go zones,
+   schedules, rooms and settings under the dated `backups/` directory. Also save
+   the Homebridge backup there. App-native map backups can remain robot/cloud-side;
+   screenshots and raw map captures are not verified restorable map backups.
+4. Use dashboard **Cloud Import → Send Code → Fetch Data** with the real Roborock
+   email and the separately emailed cloud code (not the local six-digit PIN).
+   Confirm both imported names; disconnected status is expected before onboarding.
+5. Validate imported jobs and native timer references, archive the complete runtime
+   consistently after import, and verify IoT DNS plus TCP 443/8881 access before
+   resetting Downtown's Wi-Fi. No robot migration is implied by successful import.
 6. The current Homebridge instance uses one server for all devices. Pedro agreed
    to validate one robot locally first (temporarily losing its cloud connection
    in Homebridge), move the second, then switch Homebridge once. The capture

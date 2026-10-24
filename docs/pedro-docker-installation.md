@@ -7,6 +7,12 @@ helpers, templates and their tests are local-only under the ignored
 This is the staged installation for Pedro's `SCHEDULE_SUPPORT` branch. It is
 not an upstream installation guide. Schedule hardware validation is pending.
 
+Current checkpoint: Docker startup behind Nginx completed October 24 around
+00:30 UTC. The container is healthy, HTTPS returned 200, and MQTT TLS verified.
+Stages 1–2 below describe the completed setup. Continue at Stage 3; robot backups,
+cloud import and onboarding are still pending. See the recovery plan for the
+initial backup and setup-log paths.
+
 ## Stage 1: Docker, source checkout, and image
 
 Run `local-work/setup/scripts/install-pedro-docker.sh` with Bash as `pedro`, not as root. It
