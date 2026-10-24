@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Sign in · Roborock Local Server</title>
+  <link rel="stylesheet" href="/admin/assets/admin.css">
+  <script src="/admin/assets/login.js" defer></script>
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><circle cx="16" cy="17" r="10"/><path d="M11 9V7h10v2M10 21h12M13 13h6"/></svg></div>
+    <p class="eyebrow">ROBOROCK LOCAL SERVER</p>
+    <h1>Welcome home.</h1>
+    <p class="muted">Sign in to manage your local server.</p>
+    <form id="loginForm" class="stack">
+      <div class="field">
+        <label for="password">Admin password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+      </div>
+      <button id="login" class="button primary" type="submit">Sign in</button>
+      <p id="result" class="message" role="alert" hidden></p>
+    </form>
+    <p class="login-note">Use the admin password you chose during server setup.</p>
+    <noscript><p class="message error">Enable JavaScript to sign in and manage the server.</p></noscript>
+  </main>
+</body>
+</html>

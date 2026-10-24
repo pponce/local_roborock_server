@@ -1,0 +1,67 @@
+name: Admin dashboard checks
+
+on:
+  push:
+    branches: [ADMIN_DASHBOARD_REFRESH]
+  pull_request:
+    paths:
+      - src/roborock_local_server/standalone_admin.py
+      - src/roborock_local_server/admin_ui/**
+      - tests/test_admin_api.py
+      - tests/browser/**
+      - .github/workflows/admin-ui-tests.yml
+      - pyproject.toml
+      - uv.lock
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admin-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-and-packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - run: uv run pytest -q
+      - name: Verify UI assets ship in the wheel
+        run: |
+          uv build --wheel
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          wheel = next(Path('dist').glob('*.whl'))
+          with zipfile.ZipFile(wheel) as archive:
+              for name in ('login.html', 'dashboard.html', 'admin.css', 'login.js', 'admin.js'):
+                  assert archive.read(f'roborock_local_server/admin_ui/{name}')
+          print('All five dashboard assets are packaged.')
+          PY
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install browser test tooling (not a runtime dependency)
+        run: |
+          npm install --no-save --no-package-lock playwright@1.62.1
+          npx playwright install --with-deps chromium
+      - run: node --test tests/browser/admin-ui.test.cjs
+      - name: Upload sample dashboard screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-dashboard-previews
+          path: tests/browser/artifacts/
+          if-no-files-found: ignore
