@@ -93,9 +93,15 @@ Read this section first when resuming in a new chat.
   Independently allow Downtown's IoT traffic to `192.168.84.2` TCP 443/8881.
   The old AAAA record's removal has not been confirmed; use IPv4-only DNS for
   this first test because MQTT TLS currently binds only to `192.168.84.2`.
-  Pedro has installed LocalRock on his iPhone. Neither phone login nor pairing
-  has yet been reported. Leave Uptown and
-  Homebridge on cloud while Downtown's current Let's Encrypt chain is tested.
+  Pedro has installed LocalRock on his iPhone and successfully logged in.
+  Add Vacuum / Load vacuums shows Downtown. He confirmed the firewall allowance
+  for Downtown (IoT `192.168.69.140`) to server (Internal `192.168.84.2`), TCP
+  destination ports 443/8881, including new connections. Pairing has not yet been
+  reported. Leave Uptown and Homebridge on cloud while Downtown's current
+  Let's Encrypt chain is tested. On iOS, keep the phone on its normal home Wi-Fi
+  initially: Start pairing contacts the server before asking iOS to join the
+  robot hotspot. Reset only the robot's Wi-Fi, then let LocalRock request the
+  hotspot switch. Return the phone to normal Wi-Fi after credentials are sent.
 - A private Mac setup helper was prepared but has not been delivered/run. If
   needed later, it uses local Terminal outside SSH and keeps the three pinned
   onboarding files plus uv/Python/cache under
@@ -103,8 +109,9 @@ Read this section first when resuming in a new chat.
   The Mac GUI uses `api-roborock.onefallday.com:443`, the dashboard password,
   timezone `America/Los_Angeles`, country `us`, and no camera domain for S7.
 - Available map records, a Homebridge backup, robot Wi-Fi resets and Homebridge
-  endpoint changes have not yet been reported. Host TLS success does not establish
-  S7 certificate trust or IoT-to-server firewall access.
+  endpoint changes have not yet been reported. Host/app TLS success does not
+  establish S7 certificate trust. The IoT firewall allowance is user-confirmed;
+  successful robot-to-server traffic is still to be observed during pairing.
 - Personal files were restored under ignored `local-work/setup/`; the local
   checkout reached `08ef5ca`. Helper path and empty-IPAM fixes passed seven host
   probe tests. The full Python suite had passed on 3.11/3.13 and the Docker image
