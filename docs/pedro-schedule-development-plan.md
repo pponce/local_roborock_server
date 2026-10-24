@@ -195,8 +195,8 @@ Read this section first when resuming in a new chat.
   feasibility. They use Certbot with DNSExit auth/cleanup hooks and a deploy
   hook mapping three known certificate names to Nginx directories. The new
   Roborock certificate needs its own CA/account configuration and certificate
-  lineage, a separate deployment target such as
-  `/etc/nginx/ssl/roborock-downtown/`, and subdomain-aware DNS validation:
+  lineage, provider-specific filenames in Pedro's existing certificate directories,
+  and subdomain-aware DNS validation:
   zone `onefallday.com`, record `_acme-challenge.api-roborock`. The existing
   auth hook treats CERTBOT_DOMAIN as the zone and uses a bare
   `_acme-challenge` relative name, so simply appending the subdomain to the
@@ -204,6 +204,49 @@ Read this section first when resuming in a new chat.
   certificate/key/chain validation, Nginx configuration validation and graceful
   reload, plus expiry/failure monitoring. Personal changes stay local; do not
   publish installers, certificate files, credentials or host-specific hooks.
+- Live certificate-renewal inspection reported October 23 Pacific time:
+  all four scripts under `/home/pedro/dynamicDnsScript` exactly match the
+  reviewed repository versions. The live `requestCert.sh` has `renew_mode=0`,
+  which selects `--force-renewal`. Root cron runs it at `0 3 * * *` (03:00 in
+  the server/cron timezone); no matching certificate timer names were found.
+  This establishes forced renewal attempts, not that every attempt succeeded.
+  Pedro explicitly pointed out that changing the existing variable to
+  `renew_mode=1` selects `--keep-until-expiring`; retain this mechanism.
+  The live cleanup hook also has the missing comma after the TXT record name.
+  Inspection report: `local-work/cert-renewal-E8HlN9Mj.log`.
+- Pedro has activated Actalis's free plan and has its EAB Key ID and HMAC Key.
+  Their values were not supplied in chat. Use hidden terminal input on his
+  Linux machine; never put them in notes, GitHub, command arguments, or shared logs.
+  Official Certbot ACME endpoint:
+  `https://acme-api.actalis.com/acme/directory`.
+  Request only `api-roborock.onefallday.com`, with certificate lineage
+  `api-roborock.onefallday.com-actalis` and RSA 2048.
+- Pedro's latest storage preference is to keep the new certificate copies
+  alongside the existing ones, with the hostname and provider in the filenames:
+  `api-roborock.onefallday.com-actalis-fullchain.pem` and
+  `api-roborock.onefallday.com-actalis-privkey.pem`, in both
+  `/home/pedro/dynamicDnsScript/certs/` and `/etc/nginx/ssl/onefallday/`.
+  Do not replace the existing generic Let's Encrypt files or use the previously
+  suggested separate Nginx directory. Actalis's private Certbot state goes
+  under `certs/actalis/`, isolated from the existing Let's Encrypt account.
+- A local-only setup block has been prepared for Pedro to run over SSH.
+  It installs `/home/pedro/dynamicDnsScript/local-roborock-cert/actalis.py`
+  and `dns-hook.sh`, excludes that folder using the certificate checkout's
+  local Git exclude file, patches the known request script to mode 1,
+  fixes the cleanup JSON comma, and appends the Actalis check to the existing
+  daily entrypoint. It does not add another cron job or change Nginx certificate
+  selection. Changed-script backups stay under the Roborock checkout's
+  `backups/`, with setup files/logs under its `local-work/`.
+  DNS validation is scoped to the dedicated Roborock TXT name; cleanup is
+  skipped if another value is observed. Certificate/chain/key checks precede
+  provider-specific deployment. A failed reload is retried on a later check.
+  Eleven offline checks passed, including actual OpenSSL key validation,
+  installation idempotence, unknown-edit refusal, DNS/API failures,
+  preservation of Let's Encrypt files, and reload retry without forced issuance.
+  These tests do not establish successful live issuance or robot compatibility.
+  Installation/issuance is still awaiting Pedro's run and result.
+  After installation, rerun locally with
+  `sudo python3 /home/pedro/dynamicDnsScript/local-roborock-cert/actalis.py setup`.
 - Many-year publicly trusted leaf certificates are not available under current
   CA/Browser Forum limits: maximum 200 days for issuance from March 15, 2026,
   100 days from March 15, 2027, and 47 days from March 15, 2029.
