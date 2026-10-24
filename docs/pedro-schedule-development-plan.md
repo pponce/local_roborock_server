@@ -126,18 +126,32 @@ Read this section first when resuming in a new chat.
   changes have been made during this diagnostic step. The bundled MQTT TLS
   server permits older protocols with `DEFAULT:@SECLEVEL=0`; that differs from
   the current Nginx stream configuration but is not proof of the S7's failure.
-- A private `local-work/setup/scripts/downtown-nginx-debug.py` helper is prepared
-  for the next test; execution on Pedro's host has not yet been reported. It
+- The private `local-work/setup/scripts/downtown-nginx-debug.py` helper was run.
+  Pedro returned its stop report: Nginx syntax passed, extra logging was disabled,
+  certificates/TLS settings were unchanged, and zero Downtown connection IDs or
+  matching TLS/connection messages were observed. The private capture folder is
+  `local-work/downtown-debug/`. This is not evidence of a certificate rejection.
+  The helper
   enables `debug_connection 192.168.69.140` using the installed `--with-debug`
   Nginx, adds a private log under `local-work/downtown-debug/`, and validates
   before reloading. Its `stop` mode removes only its marked directives and
   prints a filtered connection/TLS report. Raw logs stay local. Syntax,
   configuration restoration after failed validation, preservation of later
   unrelated edits, and report filtering were checked in an isolated fixture.
-  Retry Downtown once with logging enabled, then run `stop`; do not infer a
-  certificate failure from the spinning LocalRock button or the earlier empty
-  connection snapshot. LocalRock's current sanitizer was checked: it strips
+  Do not infer a certificate failure from the spinning LocalRock button or an
+  empty connection snapshot. LocalRock's current sanitizer was checked: it strips
   `api-` for token.r and preserves an explicit port, with no inserted `:555`.
+- Next diagnostic prepared (not yet reported): confirm Downtown still has
+  `192.168.69.140`, then capture three minutes of IPv4 TCP packet summaries on
+  Linux interface `enp170s0` during one fresh LocalRock pairing attempt. The local
+  command uses tcpdump quick output without application payloads, checks Linux
+  hostname resolution including IPv6, counts raw records from the preceding
+  Nginx capture without exposing their contents, and lists error-log destinations.
+  Results go under `local-work/downtown-network-XXXXXXXX/`. Nginx stays unchanged;
+  tcpdump is installed only if missing. This host-side capture cannot observe
+  the robot's DNS requests to its gateway or connections sent elsewhere, and its
+  packet filter uses the known IPv4 address; an IPv6 DNS answer needs separate
+  follow-up. Diagnose reachability/log routing before changing TLS or certificates.
 - Available map records, a Homebridge backup and Homebridge endpoint changes
   have not yet been reported. Downtown's Wi-Fi provisioning has been attempted.
   Host/app TLS success does not
