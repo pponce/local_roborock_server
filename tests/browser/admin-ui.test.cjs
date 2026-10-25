@@ -107,6 +107,12 @@ async function serve(req, res) {
   }
   const schedulePath = /^\/admin\/api\/schedules\/([^/]+)\/([^/]+)$/.exec(url.pathname);
   if (schedulePath && schedulePath[2] === "rooms" && req.method === "GET") return reply(state.roomCatalog);
+  if (schedulePath && schedulePath[2] === "rooms" && req.method === "POST") {
+    state.roomCatalog.map_index = body.map_index;
+    state.roomCatalog.revision = "upstairs-rooms-v1";
+    state.roomCatalog.rooms = [{id: 25, room_id: "bedroom", name: "Bedroom"}];
+    return reply(state.roomCatalog);
+  }
   if (schedulePath && req.method === "PATCH") {
     const device = state.schedules.devices.find((item) => item.duid === decodeURIComponent(schedulePath[1]));
     const job = device?.schedules.find((item) => String(item.id) === decodeURIComponent(schedulePath[2]));
@@ -192,6 +198,7 @@ beforeEach(async () => {
   // No test may contact a real cloud service or robot.
   await context.route("**/*", (route) => new URL(route.request().url()).origin === baseURL ? route.continue() : route.abort());
   page = await context.newPage();
+  page.setDefaultTimeout(10000);
 });
 afterEach(async () => { await context?.close(); });
 
@@ -656,6 +663,21 @@ test("full cleaning can target another named map without reusing room IDs", asyn
   await card.getByText("Schedule saved.", {exact: true}).waitFor();
   assert.deepEqual(state.requests.find((item) => item.method === "PATCH").body.settings, {map_index: 1, segments: "0"});
   assert.equal(await card.locator('[data-field="taskSummary"]').textContent(), "Upstairs · Full");
+});
+
+test("another floor loads only on request and its rooms are then selectable", async () => {
+  await ready();
+  const card = await openSchedule();
+  await card.getByLabel("Map", {exact: true}).selectOption({label: "Upstairs"});
+  assert.equal(state.requests.some((item) => item.path.endsWith("/rooms") && item.method === "POST"), false);
+  await card.getByRole("button", {name: "Load map and rooms", exact: true}).click();
+  await card.getByLabel("Bedroom", {exact: true}).waitFor();
+  await card.getByLabel("Bedroom", {exact: true}).check();
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.getByText("Schedule saved.", {exact: true}).waitFor();
+  const request = state.requests.find((item) => item.method === "PATCH");
+  assert.equal(request.body.room_revision, "upstairs-rooms-v1");
+  assert.deepEqual(request.body.settings, {map_index: 1, segments: "25"});
 });
 
 test("compact list and editor fit mobile and expose keyboard focus without script errors", async () => {

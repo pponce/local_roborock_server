@@ -128,7 +128,7 @@
             <legend class="sr-only">Schedule settings</legend>
             <div class="schedule-time-settings">
               <label class="schedule-setting-row" data-field="timeField"><span>Start time</span><input name="time" type="time" step="60" aria-label="Start time"></label>
-              <label class="schedule-setting-row"><span>Repeat</span><select name="mode"><option value="once">Once</option><option value="everyday">Every day</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option><option value="custom">Custom days</option><option value="cron">Advanced schedule</option></select></label>
+              <label class="schedule-setting-row"><span>Repeat</span><select name="mode" aria-label="Repeat"><option value="once">Once</option><option value="everyday">Every day</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option><option value="custom">Custom days</option><option value="cron">Advanced schedule</option></select></label>
             </div>
             <p class="helper" data-field="onceHelp" hidden>Runs at the next selected start time, then turns off.</p>
             <fieldset class="schedule-days" data-field="daysField"><legend>Repeat on</legend><div>
@@ -139,23 +139,24 @@
               <h4>Task</h4>
               <fieldset class="cleaning-fields">
                 <legend class="sr-only">Cleaning choices</legend>
-                <label class="schedule-setting-row"><span>Map</span><select name="map"></select></label>
+                <label class="schedule-setting-row"><span>Map</span><select name="map" aria-label="Map"></select></label>
                 <fieldset class="schedule-area"><legend class="sr-only">Clean area</legend><div class="schedule-segments">
                   <label><input name="area" type="radio" value="whole"><span>Full</span></label><label><input name="area" type="radio" value="rooms"><span>Rooms</span></label><label data-field="keepArea" hidden><input name="area" type="radio" value="keep"><span>Saved selection</span></label>
                 </div></fieldset>
-                <label class="schedule-setting-row"><span>Cleaning mode</span><select name="cleaning_mode"><option value="vacuum">Vacuum</option><option value="vac_mop">Vac &amp; mop</option><option value="mop">Mop</option><option value="custom">Custom</option><option value="keep" hidden>Saved mode</option></select></label>
+                <label class="schedule-setting-row"><span>Cleaning mode</span><select name="cleaning_mode" aria-label="Cleaning mode"><option value="vacuum">Vacuum</option><option value="vac_mop">Vac &amp; mop</option><option value="mop">Mop</option><option value="custom">Custom</option><option value="keep" hidden>Saved mode</option></select></label>
                 <p class="helper" data-field="customHelp" hidden>Uses the cleaning preferences saved for each room on the vacuum.</p>
                 <fieldset class="schedule-rooms"><legend>Choose rooms</legend><div data-field="roomList" class="room-list"></div></fieldset>
                 <p class="helper" data-field="selectionCount"></p>
                 <div class="schedule-room-tools"><p class="helper" data-field="roomStatus" role="status"></p><button class="button secondary" data-field="refreshRooms" type="button">Refresh rooms</button></div>
                 <p class="helper" data-field="mapHelp"></p>
+                <button class="button secondary" data-field="loadMap" type="button" hidden>Load map and rooms</button>
                 <p class="helper" data-field="roomReview" hidden>The room list changed. Review your selection before saving.</p>
                 <button class="button secondary" data-field="confirmRooms" type="button" hidden>Use this room selection</button>
                 <div class="schedule-cleaning-grid cleaning-options">
-                  <label class="field" data-field="suctionField">Suction<select name="fan_power"></select></label>
-                  <label class="field" data-field="waterField">Water level<select name="water_box_mode"></select></label>
-                  <label class="field" data-field="mopField">Mopping route<select name="mop_mode"></select></label>
-                  <label class="field">Cleaning passes<select name="repeat"></select></label>
+                  <label class="field" data-field="suctionField">Suction<select name="fan_power" aria-label="Suction"></select></label>
+                  <label class="field" data-field="waterField">Water level<select name="water_box_mode" aria-label="Water level"></select></label>
+                  <label class="field" data-field="mopField">Mopping route<select name="mop_mode" aria-label="Mopping route"></select></label>
+                  <label class="field">Cleaning passes<select name="repeat" aria-label="Cleaning passes"></select></label>
                 </div>
               </fieldset>
               <p class="helper" data-field="cleaningHelp"></p>

@@ -63,6 +63,14 @@ class ScheduleSettingsTests(unittest.TestCase):
                 validate_rooms(param, catalog, catalog["revision"])
         validate_rooms(self.job["param"], catalog, catalog["revision"])
 
+    def test_full_map_does_not_need_room_bindings_but_requires_a_saved_map(self):
+        catalog = self.catalog()
+        param, _ = merge_settings(self.job, {"map_index": 2, "segments": "0"})
+        validate_rooms(param, catalog, catalog["revision"])
+        param["params"][0]["map_index"] = 9
+        with self.assertRaises(RoomCatalogError):
+            validate_rooms(param, catalog, catalog["revision"])
+
     def test_edit_preserves_native_identity_unknown_fields_and_original(self):
         before = copy.deepcopy(self.job)
         param, needs_rooms = merge_settings(self.job, {"segments": [18, 21], "fan_power": 103, "repeat": 2})

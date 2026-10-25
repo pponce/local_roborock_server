@@ -400,13 +400,13 @@
     }
     if (!rooms.length) text(list, catalog && matches ? "No named rooms reported on this map." : "Refresh rooms to load the room names.");
     text(scheduleField(state, "mapHelp"), matches || draft.area === "whole" ? ""
-      : "To choose rooms on this map, load it in LocalRock and Refresh rooms. Full cleans the entire selected map.");
+      : "Load this map to choose its rooms. The vacuum must be idle or docked. Full cleans the entire selected map.");
     text(scheduleField(state, "roomStatus"), cached?.busy ? "Reading map and room names from the vacuum…"
       : cached?.error || (catalog ? "Map and rooms loaded from the vacuum." : "Connect this vacuum to load its map and room names."));
     state.form.querySelector(".schedule-rooms").hidden = draft.area !== "rooms";
   }
 
-  async function refreshRooms(duid) {
+  async function refreshRooms(duid, loadMap) {
     const cached = scheduleRooms.get(duid) || {};
     if (cached.busy) return;
     cached.busy = true;
@@ -422,13 +422,17 @@
     };
     update();
     try {
-      const catalog = await fetchJson(`/admin/api/schedules/${encodeURIComponent(duid)}/rooms`, {}, 40000);
+      const options = loadMap === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({map_index: loadMap})};
+      const catalog = await fetchJson(`/admin/api/schedules/${encodeURIComponent(duid)}/rooms`, options, 40000);
       if (!Array.isArray(catalog.rooms) || !Array.isArray(catalog.maps) || !catalog.revision || !Number.isInteger(catalog.map_index)) {
         throw new Error("The room response was incomplete. Try Refresh rooms again.");
       }
       cached.catalog = catalog;
       for (const state of scheduleCards.values()) if (state.deviceId === duid) {
-        if (roomEdits(state) && state.roomRevision !== catalog.revision) state.roomNeedsReview = true;
+        if (loadMap !== undefined && Number(state.roomDraft.map) === loadMap && !state.roomDraft.ids.length) {
+          state.roomRevision = catalog.revision;
+          state.roomNeedsReview = false;
+        } else if (roomEdits(state) && state.roomRevision !== catalog.revision) state.roomNeedsReview = true;
         else if (!roomEdits(state)) { state.roomRevision = catalog.revision; state.roomNeedsReview = false; }
       }
     } catch (error) {
@@ -471,6 +475,8 @@
     state.form.querySelector('input[name="area"][value="rooms"]').disabled = !matches;
     state.form.querySelector(".schedule-rooms").disabled = !matches || cached.busy;
     scheduleField(state, "refreshRooms").disabled = state.busy || cached?.busy === true;
+    scheduleField(state, "loadMap").hidden = !catalog || matches;
+    scheduleField(state, "loadMap").disabled = state.busy || cached?.busy === true;
     scheduleField(state, "roomReview").hidden = !state.roomNeedsReview;
     scheduleField(state, "confirmRooms").hidden = !state.roomNeedsReview;
     scheduleField(state, "confirmRooms").disabled = (!matches && state.roomDraft.area !== "whole") || cached?.busy === true;
@@ -627,6 +633,7 @@
     state.form.addEventListener("input", onInput);
     state.form.addEventListener("change", onInput);
     scheduleField(state, "refreshRooms").addEventListener("click", () => refreshRooms(state.deviceId));
+    scheduleField(state, "loadMap").addEventListener("click", () => refreshRooms(state.deviceId, Number(state.roomDraft.map)));
     scheduleField(state, "confirmRooms").addEventListener("click", () => {
       state.roomRevision = scheduleRooms.get(state.deviceId)?.catalog?.revision;
       state.roomNeedsReview = false;

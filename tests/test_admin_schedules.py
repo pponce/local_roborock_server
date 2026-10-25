@@ -63,6 +63,7 @@ def test_schedule_routes_require_admin_session(schedule_admin):
     before = paths.inventory_path.read_bytes()
     assert client.get("/admin/api/schedules").status_code == 401
     assert client.get("/admin/api/schedules/test-vacuum/rooms").status_code == 401
+    assert client.post("/admin/api/schedules/test-vacuum/rooms", json={"map_index": 1}).status_code == 401
     assert patch(client, revision="unknown", enabled=False).status_code == 401
     assert paths.inventory_path.read_bytes() == before
 
@@ -149,6 +150,73 @@ def test_read_room_catalog_uses_only_selected_robot_and_read_commands(schedule_a
     assert calls[-1] == "close"
     with pytest.raises(KeyError):
         asyncio.run(read_room_catalog(supervisor, "other-vacuum"))
+
+
+@pytest.mark.parametrize("state,in_cleaning,allowed", [(3, 0, True), (8, 0, True), (100, 0, True), (5, 0, False), (8, 2, False), (10, 1, False)])
+def test_explicit_map_load_checks_idle_state_and_verifies_the_loaded_floor(schedule_admin, monkeypatch, state, in_cleaning, allowed):
+    import asyncio
+    from shared import routine_runner
+    from roborock_local_server.admin_schedule_settings import read_room_catalog, RoomCatalogError
+
+    _, supervisor, _, _ = schedule_admin
+    calls = []
+
+    class Client:
+        def __init__(self, context, device, logger):
+            self.loaded = False
+
+        async def connect(self):
+            pass
+
+        async def send_command(self, command, params):
+            calls.append((str(command), params))
+            if str(command) == "get_status":
+                return [{"state": state, "in_cleaning": in_cleaning, "map_status": 7 if self.loaded else 3}]
+            if str(command) == "get_multi_maps_list":
+                return {"map_info": [{"mapFlag": 0, "name": "Downstairs"}, {"mapFlag": 1, "name": "Upstairs"}]}
+            if str(command) == "load_multi_map":
+                assert params == [1]
+                self.loaded = True
+                return ["ok"]
+            if str(command) == "get_room_mapping":
+                assert self.loaded
+                return [[25, "bedroom"]]
+            raise AssertionError("Unexpected robot command")
+
+        async def close(self):
+            calls.append(("close", []))
+
+    monkeypatch.setattr(routine_runner, "_RoutineMqttClient", Client)
+    if allowed:
+        result = asyncio.run(read_room_catalog(supervisor, "test-vacuum", load_map=1))
+        assert result["map_index"] == 1
+        assert result["rooms"][0]["id"] == 25
+        assert ("load_multi_map", [1]) in calls
+    else:
+        with pytest.raises(RoomCatalogError, match="idle or docked"):
+            asyncio.run(read_room_catalog(supervisor, "test-vacuum", load_map=1))
+        assert not any(command == "load_multi_map" for command, _ in calls)
+    assert calls[-1] == ("close", [])
+
+
+def test_map_load_endpoint_validates_origin_and_shape(schedule_admin, monkeypatch):
+    client, _, _, _ = schedule_admin
+    login(client)
+    calls = []
+
+    async def load(supervisor, duid, *, load_map):
+        calls.append((duid, load_map))
+        return {"map_index": load_map, "maps": [], "rooms": [], "revision": "fresh"}
+
+    monkeypatch.setattr(admin_schedules, "read_room_catalog", load)
+    url = "/admin/api/schedules/test-vacuum/rooms"
+    assert client.post(url, json={"map_index": 1}, headers={"Origin": "https://elsewhere.example"}).status_code == 403
+    assert client.post(url, content="{}").status_code == 415
+    for body in ({}, {"map_index": True}, {"map_index": -1}, {"map_index": 63}, {"map_index": 1, "start": True}):
+        assert client.post(url, json=body).status_code == 400
+    assert calls == []
+    assert client.post(url, json={"map_index": 1}).status_code == 200
+    assert calls == [("test-vacuum", 1)]
 
 
 def test_lists_native_imports_and_next_run_without_exposing_inventory(schedule_admin):

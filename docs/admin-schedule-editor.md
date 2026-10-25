@@ -30,8 +30,10 @@ or will clean.
 - Room names join the vacuum's live segment-to-cloud-room mapping with imported
   home room names. Unknown names appear as **Room 16**, for example. Map names
   come from the vacuum. Full can target any reported saved map. To select rooms
-  on another floor, load its saved map in LocalRock, then refresh rooms. The
-  editor itself never switches the robot's map.
+  on another floor, choose it and click **Load map and rooms**. This explicitly
+  loads that saved floor on the robot, then reads its rooms. The server refuses
+  the load while the robot is busy or has an unfinished clean. Opening the
+  editor and refreshing room metadata never switch maps.
 - Save rechecks the loaded map and room catalog. Changes to the map, room IDs
   or names require refreshing and reviewing the selection. Other drafts remain.
 - **More settings** shows cleaning order, mop preparation and mop
@@ -82,7 +84,10 @@ earlier dashboard styling change. A test build may combine these features.
 `cron`, `timeZoneId`, `enabled`, `repeated`, `settings`. `settings` accepts only `map_index`,
 `segments`, `fan_power`, `water_box_mode`, `mop_mode`, `repeat`.
 `GET /admin/api/schedules/{duid}/rooms` reads map/room metadata through the local
-MQTT client. A room/map edit also requires its `room_revision`; the server reads
+MQTT client. `POST` to that endpoint with `map_index` explicitly loads that floor
+after checking the live idle/docked state and the available map list. It verifies
+the loaded map before returning room bindings; it never starts a clean.
+A room/map edit also requires its `room_revision`; the server reads
 the catalog again before accepting that edit. Other edits work without querying
 the vacuum. All endpoints require the existing admin session. Writes
 require JSON and reject cross-origin browser requests. The revision is checked

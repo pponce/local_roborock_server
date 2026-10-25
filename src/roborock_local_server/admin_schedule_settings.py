@@ -36,6 +36,7 @@ class ReadCommand(StrEnum):
     STATUS = "get_status"
     MAPS = "get_multi_maps_list"
     ROOMS = "get_room_mapping"
+    LOAD_MAP = "load_multi_map"
 
 
 def setting_choices(settings: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
@@ -162,7 +163,7 @@ def build_room_catalog(before: Any, maps: Any, mapping: Any, after: Any, invento
     return catalog
 
 
-async def read_room_catalog(supervisor: Any, duid: str) -> dict[str, Any]:
+async def read_room_catalog(supervisor: Any, duid: str, *, load_map: int | None = None) -> dict[str, Any]:
     from shared.routine_runner import _RoutineMqttClient
 
     device = supervisor.runtime_credentials.resolve_device(duid=duid)
@@ -174,8 +175,36 @@ async def read_room_catalog(supervisor: Any, duid: str) -> dict[str, Any]:
             client = _RoutineMqttClient(supervisor.context, device, logging.getLogger(__name__))
             await client.connect()
             before = await client.send_command(ReadCommand.STATUS, [])
-            # Reads only: opening the editor never switches a robot's map.
             maps = await client.send_command(ReadCommand.MAPS, [])
+            # Opening the editor is read-only. Loading a floor requires a
+            # separate, explicit POST action and a fresh idle-state check.
+            if load_map is not None:
+                status = _object(before)
+                if status.get("state") not in (3, 8, 100) or status.get("in_cleaning", 0) not in (0, None):
+                    raise RoomCatalogError("Wait until the vacuum is idle or docked with no unfinished clean before loading another map.")
+                available = _object(maps).get("map_info")
+                if not isinstance(available, list) or not any(isinstance(item, dict) and item.get("mapFlag") == load_map for item in available):
+                    raise RoomCatalogError("This saved map is no longer available. Refresh rooms and choose a map.")
+                try:
+                    await client.send_command(ReadCommand.LOAD_MAP, [load_map])
+                except Exception as exc:
+                    payload = exc.args[0] if exc.args and isinstance(exc.args[0], dict) else {}
+                    if payload.get("code", getattr(exc, "code", None)) != -10005:
+                        raise
+                    # Newer firmware can require the data/need_retry envelope.
+                    await client.send_command(ReadCommand.LOAD_MAP, {"data": [load_map], "need_retry": 1})
+                # Some models acknowledge with ["retry"]. The fresh status,
+                # rather than an acknowledgement alone, confirms the floor.
+                for _ in range(16):
+                    before = await client.send_command(ReadCommand.STATUS, [])
+                    try:
+                        if _map_flag(before) == load_map:
+                            break
+                    except RoomCatalogError:
+                        pass
+                    await asyncio.sleep(0.5)
+                else:
+                    raise RoomCatalogError("The map is still loading. Wait a moment, then Refresh rooms.")
             mapping = await client.send_command(ReadCommand.ROOMS, [])
             after = await client.send_command(ReadCommand.STATUS, [])
             inventory = json.loads(supervisor.paths.inventory_path.read_text())

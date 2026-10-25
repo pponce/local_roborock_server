@@ -196,6 +196,26 @@ async def _update(supervisor: Any, duid: str, job_id: str, body: Any) -> JSONRes
     return _response({"schedule": _schedule(updated, default_zone, datetime.now(timezone.utc))})
 
 
+async def _edit_body(request: Request) -> Any:
+    origin = request.headers.get("origin")
+    if origin:
+        try:
+            parsed = urlsplit(origin)
+        except ValueError:
+            return _response({"error": "Invalid request origin"}, 403)
+        if parsed.scheme not in ("http", "https") or parsed.netloc.casefold() != request.headers.get("host", "").casefold():
+            return _response({"error": "Cross-origin schedule changes are not allowed"}, 403)
+    if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+        return _response({"error": "Use an application/json request body"}, 415)
+    raw = await request.body()
+    if len(raw) > 16384:
+        return _response({"error": "Schedule edit is too large"}, 413)
+    try:
+        return json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return _response({"error": "Invalid JSON body"}, 400)
+
+
 def register_schedule_routes(app: FastAPI, supervisor: Any) -> None:
     @app.get("/admin/api/schedules/{duid}/rooms")
     async def schedule_rooms(duid: str, request: Request) -> JSONResponse:
@@ -206,6 +226,21 @@ def register_schedule_routes(app: FastAPI, supervisor: Any) -> None:
             return _response({"error": "Vacuum not found"}, 404)
         except RoomCatalogError as exc:
             return _response({"error": str(exc)}, 503)
+
+    @app.post("/admin/api/schedules/{duid}/rooms")
+    async def load_schedule_map(duid: str, request: Request) -> JSONResponse:
+        supervisor._require_admin(request)
+        body = await _edit_body(request)
+        if isinstance(body, JSONResponse):
+            return body
+        if not isinstance(body, dict) or set(body) != {"map_index"} or type(body["map_index"]) is not int or not 0 <= body["map_index"] < 63:
+            return _response({"error": "Choose a saved map reported by this vacuum."}, 400)
+        try:
+            return _response(await read_room_catalog(supervisor, duid, load_map=body["map_index"]))
+        except KeyError:
+            return _response({"error": "Vacuum not found"}, 404)
+        except RoomCatalogError as exc:
+            return _response({"error": str(exc)}, 409)
 
     @app.get("/admin/api/schedules")
     async def schedules_list(request: Request) -> JSONResponse:
@@ -218,21 +253,7 @@ def register_schedule_routes(app: FastAPI, supervisor: Any) -> None:
     @app.patch("/admin/api/schedules/{duid}/{job_id}")
     async def schedules_update(duid: str, job_id: str, request: Request) -> JSONResponse:
         supervisor._require_admin(request)
-        origin = request.headers.get("origin")
-        if origin:
-            try:
-                parsed = urlsplit(origin)
-            except ValueError:
-                return _response({"error": "Invalid request origin"}, 403)
-            if parsed.scheme not in ("http", "https") or parsed.netloc.casefold() != request.headers.get("host", "").casefold():
-                return _response({"error": "Cross-origin schedule changes are not allowed"}, 403)
-        if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
-            return _response({"error": "Use an application/json request body"}, 415)
-        raw = await request.body()
-        if len(raw) > 16384:
-            return _response({"error": "Schedule edit is too large"}, 413)
-        try:
-            body = json.loads(raw)
-        except (ValueError, UnicodeDecodeError):
-            return _response({"error": "Invalid JSON body"}, 400)
+        body = await _edit_body(request)
+        if isinstance(body, JSONResponse):
+            return body
         return await _update(supervisor, duid, job_id, body)
