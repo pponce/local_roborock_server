@@ -4,8 +4,17 @@ Open **Schedules** in the standalone `/admin` dashboard and choose a vacuum.
 The list includes imported native jobs, including jobs that a client's legacy
 `get_timer` screen does not show. No cloud re-import or new pairing is needed.
 
-The compact list shows each job's start time, repeat pattern, map, Full/Rooms
-selection and cleaning mode. Select a row to open its editor. More settings
+The compact list sorts schedules by start time, earliest first, whether enabled
+or disabled. Equal start times keep their existing order. Advanced expressions
+with multiple daily times sort by their earliest clock time; unreadable times
+appear last. Sorting uses each schedule's own timezone and clock time, rather
+than the next occurrence's date.
+
+Each row shows the start time, repeat pattern, map, selected room names (or
+**Full**) and cleaning mode. Long room lists wrap onto additional lines. Names
+are kept separately for each vacuum and map during the page session; a room
+whose name has not been loaded appears as **Room 16**, for example. Opening the
+list never loads another map on the robot. Select a row to open its editor. More settings
 contains the timezone, next calculated run and native timer information.
 Next-run times are displayed in the job's timezone. A next-run time describes
 when the server will evaluate a job; it is not confirmation that the robot can

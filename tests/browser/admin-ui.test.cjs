@@ -358,6 +358,10 @@ function scheduleCard(id = 42, duid = "sample-downstairs") {
   return page.locator(`.schedule-card[data-device-id="${duid}"][data-job-id="${id}"]`);
 }
 
+async function visibleScheduleIds() {
+  return page.locator(".schedule-card:visible").evaluateAll((cards) => cards.map((card) => Number(card.dataset.jobId)));
+}
+
 async function openSchedule(id = 42) {
   const card = scheduleCard(id);
   await card.locator('[data-field="openEditor"]').click();
@@ -716,4 +720,79 @@ test("compact list and editor fit mobile and expose keyboard focus without scrip
   await openSchedule();
   assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "08:05");
   assert.deepEqual(errors, []);
+});
+
+test("schedule rows sort by earliest clock time, including disabled and multiple-time jobs", async () => {
+  const [nineThirty, multiple, ten] = state.schedules.devices[0].schedules;
+  const extra = (id, cron) => ({...structuredClone(nineThirty), id, revision: `revision-${id}`, cron});
+  state.schedules.devices[0].schedules = [ten, nineThirty, multiple, extra(45, "5 8 * * *"),
+    extra(46, "*/15 0-2 * * *"), extra(47, "59 23 * * *"), extra(48, "30 9 * * 0,6"), extra(49, "invalid")];
+  const storedOrder = state.schedules.devices[0].schedules.map((job) => job.id);
+  await ready();
+  await page.waitForFunction(() => document.querySelectorAll('.schedule-card[data-device-id="sample-downstairs"]').length === 8);
+  assert.deepEqual(await visibleScheduleIds(), [46, 43, 45, 42, 48, 44, 47, 49]);
+  assert.equal(await scheduleCard(43).getByLabel("Enable schedule", {exact: true}).isChecked(), false);
+  await refresh();
+  assert.deepEqual(await visibleScheduleIds(), [46, 43, 45, 42, 48, 44, 47, 49]);
+  assert.deepEqual(state.schedules.devices[0].schedules.map((job) => job.id), storedOrder);
+  assert.equal(state.requests.some((request) => request.method === "PATCH"), false);
+});
+
+test("sorting preserves an open modal and time draft, then reorders immediately after saving", async () => {
+  await ready();
+  const card = await openSchedule();
+  await card.getByLabel("Start time", {exact: true}).fill("07:15");
+  await card.getByLabel("Start time", {exact: true}).focus();
+  state.schedules.devices[0].schedules[1].cron = "0 13 * * *";
+  state.schedules.devices[0].schedules[1].revision = "changed-by-app";
+  await page.evaluate(() => document.getElementById("refreshSchedules").click());
+  await page.waitForFunction(() => document.querySelector('.schedule-card[data-job-id="43"] [data-field="title"]').textContent === "13:00");
+  assert.deepEqual(await visibleScheduleIds(), [43, 42, 44]);
+  assert.equal(await card.locator("dialog").evaluate((dialog) => dialog.matches(":modal")), true);
+  assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "07:15");
+  assert.equal(await page.evaluate(() => document.activeElement.name), "time");
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.getByText("Schedule saved.", {exact: true}).waitFor();
+  await page.waitForFunction(() => [...document.querySelectorAll('.schedule-card[data-device-id="sample-downstairs"]')].map((card) => card.dataset.jobId).join(",") === "42,44,43");
+  assert.deepEqual(await visibleScheduleIds(), [42, 44, 43]);
+  assert.equal(await card.locator("dialog").isVisible(), false);
+  assert.equal(await page.evaluate(() => document.activeElement?.closest(".schedule-card")?.dataset.jobId), "42");
+});
+
+test("list rows show selected room names or Full and keep names separate for each floor and vacuum", async () => {
+  const original = state.schedules.devices[0].schedules[0];
+  const extra = (id, map, segments) => ({...structuredClone(original), id, revision: `revision-${id}`,
+    settings: {...original.settings, map_index: map, segments}});
+  state.schedules.devices[0].schedules.push(extra(45, 0, "18"), extra(46, 0, "0"), extra(47, 1, "16"));
+  state.schedules.devices[1].schedules[0].settings = {map_index: 0, segments: "16"};
+  await ready();
+  await scheduleCard().getByText("Downstairs · Kitchen, Hall", {exact: true}).waitFor();
+  assert.equal(await scheduleCard(45).locator('[data-field="taskSummary"]').textContent(), "Downstairs · Office");
+  assert.equal(await scheduleCard(46).locator('[data-field="taskSummary"]').textContent(), "Downstairs · Full");
+  assert.equal(await scheduleCard(47).locator('[data-field="taskSummary"]').textContent(), "Upstairs · Room 16");
+  state.roomCatalog = {...state.roomCatalog, map_index: 1, revision: "upstairs-room-names",
+    rooms: [{id: 16, room_id: "cloud-bedroom", name: "Bedroom"}]};
+  const card = await openSchedule();
+  await card.getByRole("button", {name: "Refresh rooms", exact: true}).click();
+  await page.waitForFunction(() => document.querySelector('.schedule-card[data-job-id="47"] [data-field="taskSummary"]').textContent === "Upstairs · Bedroom");
+  await card.getByRole("button", {name: "Close", exact: true}).click();
+  assert.equal(await card.locator('[data-field="taskSummary"]').textContent(), "Downstairs · Kitchen, Hall");
+  assert.equal(await scheduleCard(47).locator('[data-field="taskSummary"]').textContent(), "Upstairs · Bedroom");
+  await page.locator("#scheduleDevice").selectOption("sample-upstairs");
+  assert.equal(await scheduleCard(42, "sample-upstairs").locator('[data-field="taskSummary"]').textContent(), "Map 1 · Room 16");
+});
+
+test("long and untrusted room names wrap completely in compact rows on mobile", async () => {
+  const longName = '<img src=x onerror="window.injected=true">' + "VeryLongRoomName".repeat(12);
+  state.roomCatalog.rooms[0].name = longName;
+  await ready();
+  const summary = scheduleCard().locator('[data-field="taskSummary"]');
+  await scheduleCard().getByText(`Downstairs · ${longName}, Hall`, {exact: true}).waitFor();
+  assert.equal(await page.locator("#scheduleList img").count(), 0);
+  assert.equal(await page.evaluate(() => window.injected), undefined);
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({width, height: 950});
+    await noOverflow();
+    assert.equal(await summary.evaluate((element) => element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight), false);
+  }
 });

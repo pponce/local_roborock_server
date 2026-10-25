@@ -282,6 +282,43 @@
     return `${String(Number(hour)).padStart(2, "0")}:${String(Number(minute)).padStart(2, "0")}`;
   }
 
+  function firstCronValue(field, maximum) {
+    let first = Infinity;
+    for (const part of String(field ?? "").split(",")) {
+      const match = /^(\*|\?|\d+(?:-\d+)?)?(?:\/(\d+))?$/.exec(part);
+      if (!match || (!match[1] && !match[2]) || (match[2] !== undefined && Number(match[2]) < 1)) return Infinity;
+      const range = match[1] || "*";
+      const [start, end] = ["*", "?"].includes(range) ? [0, maximum] : range.split("-").map(Number);
+      if (start > maximum || (end !== undefined && (end < start || end > maximum))) return Infinity;
+      first = Math.min(first, start);
+    }
+    return first;
+  }
+
+  function scheduleStartMinute(cron) {
+    const parts = String(cron || "").trim().split(/\s+/);
+    if (parts.length !== 5) return Infinity;
+    // Multiple-time expressions sort by their earliest clock time, including
+    // disabled schedules with no next_run_at value.
+    return firstCronValue(parts[1], 23) * 60 + firstCronValue(parts[0], 59);
+  }
+
+  function sortScheduleCards() {
+    const states = [...scheduleCards.values()];
+    // Moving an open dialog's ancestor can remove it from the browser's modal
+    // layer. Apply any pending order when the editor closes instead.
+    if (states.some((state) => state.dialog.open)) return;
+    states.sort((a, b) => a.startMinute === b.startMinute ? 0 : a.startMinute - b.startMinute);
+    const list = $("scheduleList"), focused = document.activeElement;
+    const keepFocus = list.contains(focused);
+    let cursor = list.firstElementChild;
+    for (const state of states) {
+      if (state.card === cursor) cursor = cursor.nextElementSibling;
+      else list.insertBefore(state.card, cursor);
+    }
+    if (keepFocus && document.activeElement !== focused) focused.focus({preventScroll: true});
+  }
+
   function repeatPreset(job, simple) {
     if (job.repeated === false && singleScheduleTime(job.cron)) return "once";
     if (!simple) return "cron";
@@ -434,6 +471,13 @@
         throw new Error("The room response was incomplete. Try Refresh rooms again.");
       }
       cached.catalog = catalog;
+      // Names from a floor remain useful in list rows after another floor is
+      // loaded. The editor and save validation still use only the live catalog.
+      cached.catalogs ??= new Map();
+      cached.catalogs.set(catalog.map_index, catalog);
+      for (const mapId of cached.catalogs.keys()) {
+        if (!catalog.maps.some((map) => map.id === mapId)) cached.catalogs.delete(mapId);
+      }
       for (const state of scheduleCards.values()) if (state.deviceId === duid) {
         if (loadMap !== undefined && Number(state.roomDraft.map) === loadMap && !state.roomDraft.ids.length) {
           state.roomRevision = catalog.revision;
@@ -565,6 +609,7 @@
   }
 
   function renderScheduleSummary(state, job) {
+    state.startMinute = scheduleStartMinute(job.cron);
     const simple = simpleRecurrence(job.cron);
     const preset = repeatPreset(job, simple);
     const days = {once: "Once", everyday: "Every day", weekdays: "Weekdays", weekends: "Weekends"}[preset] || [1, 2, 3, 4, 5, 6, 0]
@@ -573,11 +618,14 @@
     text(scheduleField(state, "title"), clock);
     text(scheduleField(state, "recurrence"), job.repeated === false ? "Once" : days || "Advanced");
     scheduleField(state, "openEditor").setAttribute("aria-label", `Edit schedule ${job.id}, ${clock}`);
-    const catalog = scheduleRooms.get(state.deviceId)?.catalog;
+    const cached = scheduleRooms.get(state.deviceId), catalog = cached?.catalog;
     const selection = savedRoomSelection(job.settings || {});
     const map = catalog?.maps.find((item) => String(item.id) === selection.map);
     const mapName = map?.name || (selection.map === "" ? "Loaded map" : `Map ${Number(selection.map) + 1}`);
-    text(scheduleField(state, "taskSummary"), `${mapName} · ${selection.area === "whole" ? "Full" : selection.area === "rooms" ? `${selection.ids.length} rooms` : "Saved rooms"}`);
+    const mapId = selection.map === "" ? catalog?.map_index : Number(selection.map);
+    const roomCatalog = cached?.catalogs?.get(mapId);
+    const selectedRooms = selection.ids.map((id) => roomCatalog?.rooms.find((room) => room.id === id)?.name || `Room ${id}`).join(", ");
+    text(scheduleField(state, "taskSummary"), `${mapName} · ${selection.area === "whole" ? "Full" : selection.area === "rooms" ? selectedRooms : "Saved rooms"}`);
     text(scheduleField(state, "modeSummary"), cleaningModeNames[cleaningMode(job.settings || {})]);
     if (!state.busy) state.card.querySelector('input[name="enabled"]').checked = job.enabled === true;
     let next = job.enabled ? "Next scheduled time: not calculated" : "Disabled on this server";
@@ -610,6 +658,7 @@
       state.dialog.scrollTop = 0;
     });
     scheduleField(state, "closeEditor").addEventListener("click", () => state.dialog.close());
+    state.dialog.addEventListener("close", sortScheduleCards);
     state.dialog.addEventListener("cancel", (event) => { if (state.busy) event.preventDefault(); });
     const onInput = (event) => {
       const input = event.target, draft = state.roomDraft;
@@ -819,6 +868,7 @@
       } else { state.card.remove(); scheduleCards.delete(key); }
     }
     selectScheduleDevice();
+    sortScheduleCards();
   }
 
   async function refreshScheduleData() {
