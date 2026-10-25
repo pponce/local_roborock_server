@@ -73,7 +73,8 @@ it does not establish scheduled execution or every model's behavior.
 
 Missing, duplicate or invalid timer references and unconfirmed writes produce
 an error without saving the job. The editor never guesses a timer ID or creates
-a replacement timer. Dashboard edits for one vacuum are serialized, and changes
+a replacement timer. Dashboard edits, direct job API edits and background reconciliation for one
+vacuum share a lock, and changes
 from another client are checked again after the initial read and during the
 inventory save. If the timer changes but the job save fails or conflicts, the
 error reports that incomplete operation; it does not claim success or blindly
@@ -81,7 +82,10 @@ roll back a timer another client may have changed. Refresh and retry after
 reviewing the current values.
 
 Timer verification is shown under **More settings** after a successful toggle.
-Listing schedules stays read-only and does not contact the vacuum; it reports
+The server also reconciles Homebridge, LocalRock and OEM native toggles after
+a fresh robot read, with periodic recovery for missed or direct LAN changes.
+The normal dashboard polling shows those saved changes while preserving unsaved
+editor drafts. Listing schedules itself stays read-only and reports
 **Not checked in this view** rather than presenting an earlier check as current.
 Jobs without a native `name` retain their server-only enablement, including new
 jobs created by LocalRock with `method: server_scheduled_start` but no native

@@ -6,7 +6,6 @@ validated against fresh, read-only queries of the vacuum's loaded map.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -265,9 +264,8 @@ async def _edit_body(request: Request) -> Any:
 
 
 def register_schedule_routes(app: FastAPI, supervisor: Any) -> None:
-    # Do not interleave dashboard timer writes for the same vacuum. The store's
-    # expected-job check still detects edits made by the app during an await.
-    edit_locks: dict[str, asyncio.Lock] = {}
+    # Dashboard writes and background reconciliation share the same per-vacuum lock.
+    # The expected-job check still detects edits made by an app during an await.
 
     @app.get("/admin/api/schedules/{duid}/rooms")
     async def schedule_rooms(duid: str, request: Request) -> JSONResponse:
@@ -308,5 +306,5 @@ def register_schedule_routes(app: FastAPI, supervisor: Any) -> None:
         body = await _edit_body(request)
         if isinstance(body, JSONResponse):
             return body
-        async with edit_locks.setdefault(duid, asyncio.Lock()):
+        async with supervisor.schedule_sync.lock(duid):
             return await _update(supervisor, duid, job_id, body)
