@@ -57,6 +57,7 @@ nav:
   - Integrations:
     - Mobile App Options: roborock_app.md
     - Camera (Live Video): camera.md
+    - S7 MaxV OEM App Video: s7-maxv-video/README.md
   - Reference:
     - Log Retention: logging.md
     - Known Limitations: known_limitations.md

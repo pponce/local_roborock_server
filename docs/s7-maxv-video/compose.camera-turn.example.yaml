@@ -1,0 +1,9 @@
+# Copy to the existing deployment directory as compose.camera-turn.yaml.
+# Replace 10.0.20.10 with the server's fixed LAN IPv4 address.
+# Add after ALL existing Compose files; use only with turn.mode = "provided".
+# Do not also enable another overlay publishing these TURN ports.
+services:
+  roborock-local-server:
+    ports:
+      - "10.0.20.10:3478:3478/udp"
+      - "10.0.20.10:49160-49179:49160-49179/udp"

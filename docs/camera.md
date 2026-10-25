@@ -4,6 +4,11 @@ Camera-capable robots can stream to a local WebRTC consumer such as
 [go2rtc](https://github.com/AlexxIT/go2rtc) with a `roborock://` source.
 Camera bootstrap, authentication and TURN all need to work.
 
+For a confirmed S7 MaxV (`roborock.vacuum.a27`, firmware `02.59.36`)
+configuration with **OEM Roborock app video and Call**, see
+[S7 MaxV video with Actalis and Nginx](s7-maxv-video/README.md).
+That guide includes generic DNS, certificate, proxy, and TURN examples.
+
 ## Bootstrap DNS, ports and certificates
 
 Bootstrap depends on firmware. The tested Saros 10R (`roborock.vacuum.a144`,

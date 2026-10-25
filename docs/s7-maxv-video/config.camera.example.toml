@@ -1,0 +1,27 @@
+# Partial configuration: merge into existing tables in config.toml.
+# Do not replace a working file or append duplicate TOML tables.
+# Replace example hostnames; preserve existing region, trusted_proxies,
+# broker, storage, admin, and other deployment-specific settings.
+
+[network]
+stack_fqdn = "api-r.example.com"
+listener_mode = "external_tls"
+https_port = 555
+advertised_https_port = 443
+mqtt_tls_port = 18881
+advertised_mqtt_tls_port = 8881
+# Keep your normal region and actual trusted proxy addresses here.
+
+[tls]
+# Nginx holds, presents, and renews the Actalis certificates.
+mode = "provided"
+
+[turn]
+mode = "provided"
+# Must resolve inside the container to an IPv4 reachable by robot and viewer.
+host = "r.example.com"
+port = 3478
+username = "rrturn"
+password = "REPLACE_WITH_A_LONG_LOCALLY_GENERATED_RANDOM_PASSWORD"
+realm = "r.example.com"
+ttl = 86400
