@@ -1,8 +1,10 @@
 """Dashboard edits preserve native identity and verify room/map bindings."""
 
 import copy
+import asyncio
 from datetime import datetime
 import json
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 import pytest
@@ -14,7 +16,55 @@ from roborock_local_server import admin_schedules
 
 
 @pytest.fixture
-def schedule_admin(tmp_path):
+def timer_robot(monkeypatch):
+    from shared import routine_runner
+
+    robot = SimpleNamespace(
+        timers=[["native-test-timer", "on", {"keep": "timer-settings"}]], calls=[],
+        read_count=0, read_error=None, connect_error=None, write_error=None,
+        apply_write=True, after_read=None, after_write=None,
+    )
+
+    class Client:
+        def __init__(self, context, device, logger):
+            assert device["duid"] == "test-vacuum"
+
+        async def connect(self):
+            robot.calls.append(("connect", None))
+            if robot.connect_error:
+                raise robot.connect_error
+
+        async def send_command(self, command, params):
+            method = str(command)
+            robot.calls.append((method, copy.deepcopy(params)))
+            await asyncio.sleep(0)
+            if method == "get_server_timer":
+                robot.read_count += 1
+                if robot.after_read:
+                    robot.after_read(robot.read_count)
+                if robot.read_error:
+                    raise robot.read_error
+                return copy.deepcopy(robot.timers)
+            assert method == "upd_server_timer"
+            if robot.apply_write:
+                for timer in robot.timers:
+                    if timer[0] == params[0][0]:
+                        timer[1] = params[0][1]
+            if robot.after_write:
+                robot.after_write()
+            if robot.write_error:
+                raise robot.write_error
+            return ["ok"]
+
+        async def close(self):
+            robot.calls.append(("close", None))
+
+    monkeypatch.setattr(routine_runner, "_RoutineMqttClient", Client)
+    return robot
+
+
+@pytest.fixture
+def schedule_admin(tmp_path, timer_robot):
     config_file = write_release_config(tmp_path)
     config = load_config(config_file)
     paths = resolve_paths(config_file, config)
@@ -251,7 +301,7 @@ def test_edit_preserves_native_settings_unknown_fields_and_occurrence_claim(sche
     assert stored["schedule_occurrences"]["test-vacuum"]["701"] == {"claimed_at": 12345}
 
 
-def test_server_gate_does_not_claim_to_change_native_timer(schedule_admin):
+def test_disabling_updates_and_verifies_only_the_linked_timer(schedule_admin, timer_robot):
     client, _, paths, original = schedule_admin
     login(client)
     response = patch(client, revision=row(client)["revision"], enabled=False)
@@ -259,10 +309,201 @@ def test_server_gate_does_not_claim_to_change_native_timer(schedule_admin):
     updated = response.json()["schedule"]
     assert updated["enabled"] is False
     assert updated["next_run_at"] is None
-    assert updated["native_timer_state"] == "not_checked"
+    assert updated["native_timer_state"] == "off"
+    assert datetime.fromisoformat(updated["native_timer_checked_at"]).utcoffset().total_seconds() == 0
+    assert timer_robot.calls == [
+        ("connect", None), ("get_server_timer", []),
+        ("upd_server_timer", [["native-test-timer", "off"]]), ("get_server_timer", []), ("close", None),
+    ]
+    assert timer_robot.timers == [["native-test-timer", "off", {"keep": "timer-settings"}]]
     stored = json.loads(paths.inventory_path.read_text())["schedules"]["test-vacuum"][0]
     assert stored["param"] == original["param"]
     assert stored["cron"] == original["cron"]
+
+
+def test_enabling_repairs_a_server_enabled_job_whose_robot_timer_is_off(schedule_admin, timer_robot):
+    client, _, paths, original = schedule_admin
+    timer_robot.timers = [["native-test-timer", "off", {"keep": 1}], ["another-timer", "off"]]
+    login(client)
+    response = patch(client, revision=row(client)["revision"], enabled=True)
+    assert response.status_code == 200
+    assert response.json()["schedule"]["native_timer_state"] == "on"
+    assert timer_robot.timers == [["native-test-timer", "on", {"keep": 1}], ["another-timer", "off"]]
+    assert json.loads(paths.inventory_path.read_text())["schedules"]["test-vacuum"][0] == original
+    assert ("upd_server_timer", [["native-test-timer", "on"]]) in timer_robot.calls
+    # A later listing does not present the earlier verification as a fresh read.
+    assert row(client)["native_timer_state"] == "not_checked"
+
+
+def test_already_matching_timer_is_read_without_a_duplicate_write(schedule_admin, timer_robot):
+    client, _, _, _ = schedule_admin
+    login(client)
+    response = patch(client, revision=row(client)["revision"], enabled=True)
+    assert response.status_code == 200
+    assert response.json()["schedule"]["native_timer_state"] == "on"
+    assert timer_robot.calls == [("connect", None), ("get_server_timer", []), ("close", None)]
+
+
+@pytest.mark.parametrize("timers,status", [
+    ([], 409), ([["unrelated", "on"]], 409),
+    ([["native-test-timer", "on"], ["native-test-timer", "off"]], 409),
+    ([["native-test-timer", "unknown"]], 409), ([["native-test-timer"]], 409), ({"timers": []}, 503),
+])
+def test_unusable_native_timer_never_changes_job_or_creates_a_timer(schedule_admin, timer_robot, timers, status):
+    client, _, paths, _ = schedule_admin
+    timer_robot.timers = timers
+    login(client)
+    before = paths.inventory_path.read_bytes()
+    response = patch(client, revision=row(client)["revision"], enabled=False)
+    assert response.status_code == status
+    assert paths.inventory_path.read_bytes() == before
+    assert timer_robot.calls == [("connect", None), ("get_server_timer", []), ("close", None)]
+
+
+@pytest.mark.parametrize("name", [None, "", " ", 123])
+def test_invalid_native_reference_is_not_treated_as_a_legacy_schedule(schedule_admin, timer_robot, name):
+    client, _, paths, _ = schedule_admin
+    data = json.loads(paths.inventory_path.read_text())
+    data["schedules"]["test-vacuum"][0]["param"]["params"][0]["name"] = name
+    paths.inventory_path.write_text(json.dumps(data))
+    login(client)
+    before = paths.inventory_path.read_bytes()
+    assert patch(client, revision=row(client)["revision"], enabled=False).status_code == 409
+    assert paths.inventory_path.read_bytes() == before
+    assert timer_robot.calls == []
+
+
+def test_shared_native_reference_is_rejected_before_contacting_robot(schedule_admin, timer_robot):
+    client, _, paths, original = schedule_admin
+    data = json.loads(paths.inventory_path.read_text())
+    data["schedules"]["test-vacuum"].append({**original, "id": 702})
+    paths.inventory_path.write_text(json.dumps(data))
+    login(client)
+    before = paths.inventory_path.read_bytes()
+    assert patch(client, revision=row(client)["revision"], enabled=False).status_code == 409
+    assert paths.inventory_path.read_bytes() == before
+    assert timer_robot.calls == []
+
+
+@pytest.mark.parametrize("params", [[], [{}], [{"name": "native-test-timer"}, {"name": "another-timer"}]])
+def test_malformed_native_payload_is_not_treated_as_legacy(schedule_admin, timer_robot, params):
+    client, _, paths, _ = schedule_admin
+    data = json.loads(paths.inventory_path.read_text())
+    data["schedules"]["test-vacuum"][0]["param"]["params"] = params
+    paths.inventory_path.write_text(json.dumps(data))
+    login(client)
+    before = paths.inventory_path.read_bytes()
+    assert patch(client, revision=row(client)["revision"], enabled=False).status_code == 409
+    assert paths.inventory_path.read_bytes() == before
+    assert timer_robot.calls == []
+
+
+@pytest.mark.parametrize("failure", ["connect_error", "read_error"])
+def test_unreachable_robot_keeps_job_and_does_not_expose_connection_details(schedule_admin, timer_robot, failure):
+    client, _, paths, _ = schedule_admin
+    setattr(timer_robot, failure, TimeoutError("PRIVATE_CONNECTION_DETAIL"))
+    login(client)
+    before = paths.inventory_path.read_bytes()
+    response = patch(client, revision=row(client)["revision"], enabled=False)
+    assert response.status_code == 503
+    assert "PRIVATE_CONNECTION_DETAIL" not in response.text
+    assert paths.inventory_path.read_bytes() == before
+    assert not any(command == "upd_server_timer" for command, _ in timer_robot.calls)
+    assert timer_robot.calls[-1] == ("close", None)
+
+
+@pytest.mark.parametrize("write_error", [None, RuntimeError("PRIVATE_REFUSAL")])
+def test_acknowledgement_without_changed_timer_is_not_success(schedule_admin, timer_robot, write_error):
+    client, _, paths, _ = schedule_admin
+    timer_robot.apply_write = False
+    timer_robot.write_error = write_error
+    login(client)
+    before = paths.inventory_path.read_bytes()
+    response = patch(client, revision=row(client)["revision"], enabled=False)
+    assert response.status_code == 503
+    assert "PRIVATE_REFUSAL" not in response.text
+    assert paths.inventory_path.read_bytes() == before
+    assert timer_robot.read_count == 2
+
+
+def test_lost_write_acknowledgement_can_be_confirmed_without_resending(schedule_admin, timer_robot):
+    client, _, _, _ = schedule_admin
+    timer_robot.write_error = TimeoutError("lost acknowledgement")
+    login(client)
+    response = patch(client, revision=row(client)["revision"], enabled=False)
+    assert response.status_code == 200
+    assert response.json()["schedule"]["native_timer_state"] == "off"
+    assert sum(command == "upd_server_timer" for command, _ in timer_robot.calls) == 1
+    assert timer_robot.read_count == 2
+
+
+def test_failed_verification_reports_uncertainty_without_saving_job(schedule_admin, timer_robot):
+    client, _, paths, _ = schedule_admin
+    def fail_readback(count):
+        if count == 2:
+            timer_robot.read_error = TimeoutError("PRIVATE_CONNECTION_DETAIL")
+    timer_robot.after_read = fail_readback
+    login(client)
+    before = paths.inventory_path.read_bytes()
+    response = patch(client, revision=row(client)["revision"], enabled=False)
+    assert response.status_code == 503
+    assert "may have changed" in response.json()["error"]
+    assert paths.inventory_path.read_bytes() == before
+    assert timer_robot.timers[0][1] == "off"
+    assert timer_robot.calls[-1] == ("close", None)
+
+
+@pytest.mark.parametrize("when", ["before_write", "after_write"])
+def test_app_edit_during_timer_operation_is_preserved(schedule_admin, timer_robot, when):
+    client, _, paths, _ = schedule_admin
+    def change_job(*args):
+        data = json.loads(paths.inventory_path.read_text())
+        data["schedules"]["test-vacuum"][0]["cron"] = "5 9 * * *"
+        paths.inventory_path.write_text(json.dumps(data))
+    if when == "before_write":
+        timer_robot.after_read = change_job
+    else:
+        timer_robot.after_write = change_job
+    login(client)
+    response = patch(client, revision=row(client)["revision"], enabled=False)
+    assert response.status_code == 409
+    stored = json.loads(paths.inventory_path.read_text())["schedules"]["test-vacuum"][0]
+    assert stored["cron"] == "5 9 * * *"
+    assert stored["enabled"] is True
+    writes = [call for call in timer_robot.calls if call[0] == "upd_server_timer"]
+    assert len(writes) == (0 if when == "before_write" else 1)
+
+
+def test_simultaneous_dashboard_toggles_do_not_interleave_robot_writes(schedule_admin, timer_robot):
+    import httpx
+    _, supervisor, _, _ = schedule_admin
+    async def exercise():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=supervisor.app), base_url="http://testserver") as client:
+            assert (await client.post("/admin/api/login", json={"password": "correct horse battery staple"})).status_code == 200
+            listing = (await client.get("/admin/api/schedules")).json()
+            job = next(d for d in listing["devices"] if d["duid"] == "test-vacuum")["schedules"][0]
+            results = await asyncio.gather(*[
+                client.patch("/admin/api/schedules/test-vacuum/701", json={"revision": job["revision"], "enabled": False})
+                for _ in range(2)
+            ])
+            assert sorted(r.status_code for r in results) == [200, 409]
+    asyncio.run(exercise())
+    assert sum(command == "upd_server_timer" for command, _ in timer_robot.calls) == 1
+
+
+def test_legacy_enablement_and_unrelated_edits_do_not_contact_native_timer(schedule_admin, timer_robot):
+    client, _, paths, _ = schedule_admin
+    login(client)
+    assert patch(client, revision=row(client)["revision"], cron="5 9 * * *").status_code == 200
+    assert timer_robot.calls == []
+    data = json.loads(paths.inventory_path.read_text())
+    del data["schedules"]["test-vacuum"][0]["param"]["params"][0]["name"]
+    data["schedules"]["test-vacuum"][0]["param"]["method"] = "app_start"
+    paths.inventory_path.write_text(json.dumps(data))
+    response = patch(client, revision=row(client)["revision"], enabled=False)
+    assert response.status_code == 200
+    assert response.json()["schedule"]["native_timer_state"] is None
+    assert timer_robot.calls == []
 
 
 def test_stale_browser_revision_does_not_overwrite_another_client(schedule_admin):
@@ -353,6 +594,8 @@ def test_write_failure_and_corrupt_inventory_are_not_acknowledged(schedule_admin
     monkeypatch.setattr(admin_schedules, "upsert_job", cannot_save)
     response = patch(client, revision=revision, enabled=False)
     assert response.status_code == 500
+    assert response.json()["code"] == "schedule_save_failed_after_timer_sync"
+    assert "robot timer was verified off" in response.json()["error"]
     assert "PRIVATE_FILESYSTEM_DETAIL" not in response.text
     paths.inventory_path.write_text("not valid JSON")
     assert client.get("/admin/api/schedules").status_code == 500

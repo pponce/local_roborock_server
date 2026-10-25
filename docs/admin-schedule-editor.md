@@ -55,14 +55,36 @@ or will clean.
   another client changes or deletes a job; the user can discard and reload.
 - One-time and repeating jobs can both be edited. Cleaning edits are limited to native jobs
   whose complete payload reaches the vacuum; legacy/unknown formats display
-  saved settings read-only. Creating/deleting jobs and writing robot-native
-  timers are outside this editor.
+  saved settings read-only. Creating/deleting jobs or robot-native timer entries
+  is outside this editor.
 
-**Enable schedule** controls only the stored job's
-`enabled` flag. A native job also requires its robot-side timer to be on. This
-editor does not query or modify that timer and labels its state **Not checked**.
-Do not interpret an enabled server job as proof that a native timer survived
-onboarding. The scheduler still performs its existing native timer preflight.
+**Enable schedule** updates both parts of a native schedule. It reads the
+vacuum's `get_server_timer` list, matches the job's existing `param.params[0].name`,
+and sends `upd_server_timer` with `[[timerName, "on" or "off"]]` when needed.
+A fresh timer read must confirm the requested state before the job's `enabled`
+flag is saved. Reapplying the same server flag also repairs an opposite native
+state; an already matching timer needs no additional write. A lost write
+acknowledgement can be confirmed by read-back without resending the write.
+
+This follows the request sequence observed from the official app on a migrated
+S7 on 2026-10-25: native timer update, then job PUT with the matching enabled
+flag. That trace contained requests and HTTP results, not matched MQTT replies;
+it does not establish scheduled execution or every model's behavior.
+
+Missing, duplicate or invalid timer references and unconfirmed writes produce
+an error without saving the job. The editor never guesses a timer ID or creates
+a replacement timer. Dashboard edits for one vacuum are serialized, and changes
+from another client are checked again after the initial read and during the
+inventory save. If the timer changes but the job save fails or conflicts, the
+error reports that incomplete operation; it does not claim success or blindly
+roll back a timer another client may have changed. Refresh and retry after
+reviewing the current values.
+
+Timer verification is shown under **More settings** after a successful toggle.
+Listing schedules stays read-only and does not contact the vacuum; it reports
+**Not checked in this view** rather than presenting an earlier check as current.
+Legacy jobs retain their server-only enablement. The scheduler still performs
+its existing native timer preflight at execution time.
 
 Homebridge pause/delay policy remains in Homebridge. This dashboard is an admin
 adapter over the existing schedule store, not a second scheduling engine. The
@@ -79,10 +101,12 @@ earlier dashboard styling change. A test build may combine these features.
 3. Observe the actual robot, the native timer-read/start replies and cleaning
    history. A job-task acceptance or calculated next run is not proof of a clean.
    Normal dispatch can occur up to 60 seconds after the scheduled minute.
-4. Test a later occurrence with server permission off; it should not start.
-   Re-enable for a future time and verify exactly one intended clean. This tests
-   the server gate, not native-timer off/on semantics.
-5. Restore the original time/days and permission. Validate native off/on,
+4. Toggle an existing native schedule off and on in the dashboard. Verify both
+   the stored enabled flag and the live native timer, then reopen the schedule
+   list in the Roborock app. Include a job previously enabled only on the server.
+   Test a later occurrence while disabled; it should not start. Re-enable for
+   a future time and verify exactly one intended clean.
+5. Restore the original time/days and enablement. Validate
    room-specific settings, offline/restart behavior and Homebridge pause/delay
    separately as described in [schedule support](schedules.md).
 
@@ -97,14 +121,16 @@ MQTT client. `POST` to that endpoint with `map_index` explicitly loads that floo
 after checking the live idle/docked state and the available map list. It verifies
 the loaded map before returning room bindings; it never starts a clean.
 A room/map edit also requires its `room_revision`; the server reads
-the catalog again before accepting that edit. Other edits work without querying
-the vacuum. All endpoints require the existing admin session. Writes
+the catalog again before accepting that edit. Native enablement also requires
+a live robot read-back. Other edits work without querying the vacuum.
+All endpoints require the existing admin session. Writes
 require JSON and reject cross-origin browser requests. The revision is checked
 again against the expected job under the schedule store's inventory lock.
 
 No new runtime dependency or database format is introduced. Python tests cover
 authentication, field privacy, preservation, stale/racing updates, validation,
-one-time transitions and persistence errors. Browser tests cover the native listing,
+native timer matching, read-back, lost acknowledgements, offline failures,
+one-time transitions and partial persistence errors. Browser tests cover the native listing,
 form persistence, conflict recovery, advanced expressions, mobile layout and
 text escaping, header enablement, named rooms, cleaning choices and room changes
 during editing. Hardware scheduled execution remains pending until observed.

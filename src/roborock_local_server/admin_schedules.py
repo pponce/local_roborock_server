@@ -6,6 +6,7 @@ validated against fresh, read-only queries of the vacuum's loaded map.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -25,6 +26,7 @@ from .admin_schedule_settings import (
     RoomCatalogError, merge_settings, read_room_catalog, schedule_param,
     setting_choices, validate_rooms,
 )
+from .admin_schedule_timers import TimerSyncError, sync_timer
 
 
 _SETTING_KEYS = (
@@ -53,16 +55,18 @@ def _revision(job: dict[str, Any]) -> str:
     return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
-def _settings(job: dict[str, Any]) -> dict[str, Any]:
+def _job_param(job: dict[str, Any]) -> dict[str, Any]:
     param = job.get("param")
     if isinstance(param, str):
         try:
             param = json.loads(param)
         except (ValueError, TypeError):
             return {}
-    if not isinstance(param, dict):
-        return {}
-    params = param.get("params")
+    return param if isinstance(param, dict) else {}
+
+
+def _settings(job: dict[str, Any]) -> dict[str, Any]:
+    params = _job_param(job).get("params")
     if isinstance(params, list) and len(params) == 1:
         params = params[0]
     return params if isinstance(params, dict) else {}
@@ -155,7 +159,7 @@ async def _update(supervisor: Any, duid: str, job_id: str, body: Any) -> JSONRes
     if not isinstance(cron, str) or not cron.strip() or len(cron) > 200:
         return _response({"error": "A valid five-field schedule expression is required"}, 400)
     if type(enabled) is not bool:
-        return _response({"error": "Server enablement must be true or false"}, 400)
+        return _response({"error": "Schedule enablement must be true or false"}, 400)
     if type(repeated) is not bool:
         return _response({"error": "Repeat must be true or false"}, 400)
     if "timeZoneId" in body and (not isinstance(zone, str) or not zone.strip() or len(zone) > 100):
@@ -181,6 +185,36 @@ async def _update(supervisor: Any, duid: str, job_id: str, body: Any) -> JSONRes
                 return _response({"error": "Vacuum not found"}, 404)
             except RoomCatalogError as exc:
                 return _response({"error": str(exc), "code": "room_catalog_changed"}, 409)
+    native_state = None
+    settings = _settings(existing)
+    if "enabled" in body and ("name" in settings or _job_param(existing).get("method") == "server_scheduled_start"):
+        name = settings.get("name")
+        if not isinstance(name, str) or not name.strip():
+            return _response({"error": "This schedule has no usable robot timer reference."}, 409)
+
+        def check_current() -> None:
+            try:
+                latest = _inventory(supervisor).get("schedules", {}).get(duid, [])
+                if not isinstance(latest, list):
+                    raise ValueError("Invalid schedule list")
+            except (OSError, ValueError):
+                raise TimerSyncError("Unable to read stored schedules", 500) from None
+            current = [job for job in latest if isinstance(job, dict) and str(job.get("id")) == job_id]
+            if current != [existing]:
+                raise TimerSyncError("This schedule changed. Reload it before saving again.", 409)
+            linked = [job for job in latest if isinstance(job, dict) and _settings(job).get("name") == name]
+            if len(linked) != 1:
+                raise TimerSyncError("Multiple schedules reference this robot timer. Resolve that conflict before changing it.", 409)
+
+        try:
+            check_current()
+            native_state = await sync_timer(supervisor, duid, name, enabled, check_current=check_current)
+            check_current()
+        except TimerSyncError as exc:
+            if native_state is not None:
+                return _response({"error": f"The robot timer was verified {native_state}, but the schedule changed or could not be read again. Refresh schedules and retry.",
+                                  "code": "schedule_changed_after_timer_sync"}, exc.status)
+            return _response({"error": str(exc), "code": "timer_sync_failed"}, exc.status)
     try:
         updated = upsert_job(
             supervisor.context, duid, job_id=existing["id"], cron=cron.strip(), enabled=enabled,
@@ -189,11 +223,21 @@ async def _update(supervisor: Any, duid: str, job_id: str, body: Any) -> JSONRes
             repeated=repeated if "repeated" in body else None,
         )
     except ValueError:
+        if native_state is not None:
+            return _response({"error": "This schedule changed while its robot timer was being verified. Refresh schedules and retry.",
+                              "code": "schedule_changed_after_timer_sync"}, 409)
         return _response({"error": "This schedule changed. Reload it before saving again."}, 409)
     except OSError:
+        if native_state is not None:
+            return _response({"error": f"The robot timer was verified {native_state}, but the server schedule could not be saved. Refresh schedules and retry.",
+                              "code": "schedule_save_failed_after_timer_sync"}, 500)
         return _response({"error": "Unable to save the schedule. Your changes were not acknowledged."}, 500)
     default_zone = supervisor.config.network.timezone or DEFAULT_TIMEZONE
-    return _response({"schedule": _schedule(updated, default_zone, datetime.now(timezone.utc))})
+    now = datetime.now(timezone.utc)
+    payload = _schedule(updated, default_zone, now)
+    if native_state is not None:
+        payload.update(native_timer_state=native_state, native_timer_checked_at=now.isoformat())
+    return _response({"schedule": payload})
 
 
 async def _edit_body(request: Request) -> Any:
@@ -217,6 +261,10 @@ async def _edit_body(request: Request) -> Any:
 
 
 def register_schedule_routes(app: FastAPI, supervisor: Any) -> None:
+    # Do not interleave dashboard timer writes for the same vacuum. The store's
+    # expected-job check still detects edits made by the app during an await.
+    edit_locks: dict[str, asyncio.Lock] = {}
+
     @app.get("/admin/api/schedules/{duid}/rooms")
     async def schedule_rooms(duid: str, request: Request) -> JSONResponse:
         supervisor._require_admin(request)
@@ -256,4 +304,5 @@ def register_schedule_routes(app: FastAPI, supervisor: Any) -> None:
         body = await _edit_body(request)
         if isinstance(body, JSONResponse):
             return body
-        return await _update(supervisor, duid, job_id, body)
+        async with edit_locks.setdefault(duid, asyncio.Lock()):
+            return await _update(supervisor, duid, job_id, body)

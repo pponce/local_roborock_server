@@ -21,6 +21,9 @@ function fixtures() {
     fail: new Set(),
     requests: [],
     scheduleConflict: false,
+    timerFailure: false,
+    unverifiedTimerResponse: false,
+    timerDelay: 0,
     roomConflict: false,
     roomCatalog: {revision: "downstairs-rooms-v1", map_index: 0, maps: [{id: 0, name: "Downstairs"}, {id: 1, name: "Upstairs"}],
       rooms: [{id: 16, room_id: "cloud-kitchen", name: "Kitchen"}, {id: 17, room_id: "cloud-hall", name: "Hall"}, {id: 18, room_id: "cloud-office", name: "Office"}]},
@@ -119,6 +122,11 @@ async function serve(req, res) {
     if (!job) return reply({error: "Schedule not found"}, 404);
     if (state.scheduleConflict || body.revision !== job.revision) return reply({error: "Schedule changed. Reload the saved values before editing."}, 409);
     if (state.roomConflict && body.settings?.segments) return reply({error: "The map or room list changed. Refresh rooms and review your selection before saving.", code: "room_catalog_changed"}, 409);
+    if (Object.hasOwn(body, "enabled") && job.native_timer_name) {
+      if (state.timerDelay) await new Promise((resolve) => setTimeout(resolve, state.timerDelay));
+      if (state.timerFailure) return reply({error: "The vacuum did not confirm the requested timer setting. Refresh schedules and retry.", code: "timer_sync_failed"}, 503);
+      job.native_timer_state = state.unverifiedTimerResponse ? "not_checked" : body.enabled ? "on" : "off";
+    }
     for (const key of ["cron", "timeZoneId", "enabled", "repeated"]) if (Object.hasOwn(body, key)) job[key] = body[key];
     if (body.settings) Object.assign(job.settings, body.settings);
     job.revision += "-saved";
@@ -485,14 +493,14 @@ test("header enablement saves immediately while the editor is collapsed and keep
   const card = scheduleCard();
   assert.equal(await card.locator(".schedule-dialog").getAttribute("open"), null);
   await card.getByLabel("Enable schedule", {exact: true}).uncheck();
-  await card.getByText("Schedule disabled on this server.", {exact: true}).waitFor();
+  await card.getByText("Schedule disabled.", {exact: true}).waitFor();
   assert.deepEqual(state.requests.find((item) => item.method === "PATCH").body, {revision: "revision-42", enabled: false});
   await openSchedule();
   await card.getByLabel("Start time", {exact: true}).fill("11:45");
   await card.getByLabel("Suction", {exact: true}).selectOption("103");
   await card.getByRole("button", {name: "Close", exact: true}).click();
   await card.getByLabel("Enable schedule", {exact: true}).check();
-  await card.getByText("Schedule enabled on this server.", {exact: true}).waitFor();
+  await card.getByText("Schedule enabled.", {exact: true}).waitFor();
   assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "11:45");
   assert.equal(await card.getByLabel("Suction", {exact: true}).inputValue(), "103");
   assert.equal(state.schedules.devices[0].schedules[0].settings.fan_power, 102);
@@ -517,6 +525,32 @@ test("failed enablement restores the checkbox and leaves the time draft intact",
   assert.equal(await card.getByLabel("Enable schedule", {exact: true}).isEnabled(), true);
   assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "11:45");
 });
+
+test("native toggles wait for verification and show timer detail only inside the editor", async () => {
+  await ready();
+  const card = scheduleCard();
+  state.timerDelay = 400;
+  await card.getByLabel("Enable schedule", {exact: true}).uncheck();
+  await card.getByText("Updating and checking schedule…", {exact: true}).waitFor();
+  assert.equal(await card.getByLabel("Enable schedule", {exact: true}).isDisabled(), true);
+  await card.getByText("Schedule disabled.", {exact: true}).waitFor();
+  assert.equal(state.requests.filter((item) => item.method === "PATCH").length, 1);
+  assert.match(await card.locator('[data-field="timerState"]').textContent(), /disabled \(verified when saved\)/);
+  assert.equal(await card.locator('[data-field="timerState"]').isVisible(), false);
+});
+
+for (const failure of ["timerFailure", "unverifiedTimerResponse"]) {
+  test(`native toggle does not report success with ${failure}`, async () => {
+    await ready();
+    state[failure] = true;
+    const card = scheduleCard();
+    await card.getByLabel("Enable schedule", {exact: true}).uncheck();
+    await card.locator('[data-field="toggleResult"].error').waitFor();
+    assert.equal(await card.getByLabel("Enable schedule", {exact: true}).isChecked(), true);
+    assert.equal(await card.locator('[data-field="toggleResult"].success').count(), 0);
+    assert.equal(state.requests.filter((item) => item.method === "PATCH").length, 1);
+  });
+}
 
 test("named room and cleaning controls send only chosen settings and keep native extras", async () => {
   await ready();

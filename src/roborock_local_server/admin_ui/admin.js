@@ -637,11 +637,13 @@
       } catch { next = `Next scheduled time: ${job.next_run_at}`; }
     }
     text(scheduleField(state, "next"), next);
+    const timerDetail = job.native_timer_state === "on" ? "enabled (verified when saved)"
+      : job.native_timer_state === "off" ? "disabled (verified when saved)" : "not checked in this view";
     text(scheduleField(state, "timerState"), job.native_timer_name
-      ? "Robot timer: not checked. The robot's timer must also be enabled."
+      ? `Robot timer: ${timerDetail}.`
       : "This schedule uses the server's legacy timer compatibility mode.");
     text(scheduleField(state, "enabledHelp"), job.native_timer_name
-      ? "Enable schedule saves immediately. Unchecked: this server will not run it. The robot’s own timer is managed separately."
+      ? "Changes are saved after the vacuum confirms its timer setting."
       : "Enable schedule saves immediately. Unchecked: this server will not run it.");
   }
 
@@ -704,18 +706,22 @@
       const result = scheduleField(state, "toggleResult");
       result.hidden = false;
       result.className = "message";
-      text(result, "Saving schedule enablement…");
+      text(result, state.base.native_timer_name ? "Updating and checking schedule…" : "Saving schedule…");
       try {
         const payload = await fetchJson(`/admin/api/schedules/${encodeURIComponent(state.deviceId)}/${encodeURIComponent(state.base.id)}`, {
           method: "PATCH", headers: {"Content-Type": "application/json"},
           body: JSON.stringify({revision: state.base.revision, enabled: toggle.checked}),
-        });
+        }, 55000);
         if (!payload.schedule?.revision) throw new Error("The save response was incomplete. Refresh schedules to check the saved state.");
+        if (payload.schedule.enabled !== toggle.checked || (state.base.native_timer_name
+            && payload.schedule.native_timer_state !== (toggle.checked ? "on" : "off"))) {
+          throw new Error("The timer change was not verified. Refresh schedules before retrying.");
+        }
         // Only enablement changed: retain unsaved time and cleaning controls.
         state.base = payload.schedule;
         state.latest = payload.schedule;
         renderScheduleSummary(state, payload.schedule);
-        text(result, payload.schedule.enabled ? "Schedule enabled on this server." : "Schedule disabled on this server.");
+        text(result, payload.schedule.enabled ? "Schedule enabled." : "Schedule disabled.");
         result.className = "message success";
       } catch (error) {
         if (error.status === 409) state.forcedConflict = true;
