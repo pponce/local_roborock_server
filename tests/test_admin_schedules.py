@@ -385,11 +385,10 @@ def test_shared_native_reference_is_rejected_before_contacting_robot(schedule_ad
     assert timer_robot.calls == []
 
 
-@pytest.mark.parametrize("params", [[], [{}], [{"name": "native-test-timer"}, {"name": "another-timer"}]])
-def test_malformed_native_payload_is_not_treated_as_legacy(schedule_admin, timer_robot, params):
+def test_multiple_native_references_are_not_treated_as_legacy(schedule_admin, timer_robot):
     client, _, paths, _ = schedule_admin
     data = json.loads(paths.inventory_path.read_text())
-    data["schedules"]["test-vacuum"][0]["param"]["params"] = params
+    data["schedules"]["test-vacuum"][0]["param"]["params"] = [{"name": "native-test-timer"}, {"name": "another-timer"}]
     paths.inventory_path.write_text(json.dumps(data))
     login(client)
     before = paths.inventory_path.read_bytes()
@@ -491,14 +490,15 @@ def test_simultaneous_dashboard_toggles_do_not_interleave_robot_writes(schedule_
     assert sum(command == "upd_server_timer" for command, _ in timer_robot.calls) == 1
 
 
-def test_legacy_enablement_and_unrelated_edits_do_not_contact_native_timer(schedule_admin, timer_robot):
+@pytest.mark.parametrize("method", ["app_start", "server_scheduled_start"])
+def test_legacy_enablement_and_unrelated_edits_do_not_contact_native_timer(schedule_admin, timer_robot, method):
     client, _, paths, _ = schedule_admin
     login(client)
     assert patch(client, revision=row(client)["revision"], cron="5 9 * * *").status_code == 200
     assert timer_robot.calls == []
     data = json.loads(paths.inventory_path.read_text())
     del data["schedules"]["test-vacuum"][0]["param"]["params"][0]["name"]
-    data["schedules"]["test-vacuum"][0]["param"]["method"] = "app_start"
+    data["schedules"]["test-vacuum"][0]["param"]["method"] = method
     paths.inventory_path.write_text(json.dumps(data))
     response = patch(client, revision=row(client)["revision"], enabled=False)
     assert response.status_code == 200

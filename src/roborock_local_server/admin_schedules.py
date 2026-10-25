@@ -187,7 +187,11 @@ async def _update(supervisor: Any, duid: str, job_id: str, body: Any) -> JSONRes
                 return _response({"error": str(exc), "code": "room_catalog_changed"}, 409)
     native_state = None
     settings = _settings(existing)
-    if "enabled" in body and ("name" in settings or _job_param(existing).get("method") == "server_scheduled_start"):
+    params = _job_param(existing).get("params")
+    has_native_reference = "name" in settings or (
+        isinstance(params, list) and any(isinstance(entry, dict) and "name" in entry for entry in params)
+    )
+    if "enabled" in body and has_native_reference:
         name = settings.get("name")
         if not isinstance(name, str) or not name.strip():
             return _response({"error": "This schedule has no usable robot timer reference."}, 409)

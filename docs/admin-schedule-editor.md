@@ -83,7 +83,10 @@ reviewing the current values.
 Timer verification is shown under **More settings** after a successful toggle.
 Listing schedules stays read-only and does not contact the vacuum; it reports
 **Not checked in this view** rather than presenting an earlier check as current.
-Legacy jobs retain their server-only enablement. The scheduler still performs
+Jobs without a native `name` retain their server-only enablement, including new
+jobs created by LocalRock with `method: server_scheduled_start` but no native
+timer reference. The method name alone does not establish a native timer.
+The scheduler still performs
 its existing native timer preflight at execution time.
 
 Homebridge pause/delay policy remains in Homebridge. This dashboard is an admin
