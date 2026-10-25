@@ -276,9 +276,15 @@
   const cleaningKeys = ["fan_power", "water_box_mode", "mop_mode", "repeat"];
   const repeatDays = {everyday: [0, 1, 2, 3, 4, 5, 6], weekdays: [1, 2, 3, 4, 5], weekends: [0, 6], once: [0, 1, 2, 3, 4, 5, 6]};
 
+  function singleScheduleTime(cron) {
+    const [minute, hour] = String(cron || "").trim().split(/\s+/);
+    if (!/^\d+$/.test(minute) || !/^\d+$/.test(hour) || Number(minute) > 59 || Number(hour) > 23) return null;
+    return `${String(Number(hour)).padStart(2, "0")}:${String(Number(minute)).padStart(2, "0")}`;
+  }
+
   function repeatPreset(job, simple) {
+    if (job.repeated === false && singleScheduleTime(job.cron)) return "once";
     if (!simple) return "cron";
-    if (job.repeated === false) return "once";
     for (const key of ["everyday", "weekdays", "weekends"]) if (JSON.stringify(simple.days) === JSON.stringify(repeatDays[key])) return key;
     return "custom";
   }
@@ -510,7 +516,7 @@
     const simple = simpleRecurrence(job.cron);
     const form = state.form;
     form.elements.mode.value = repeatPreset(job, simple);
-    form.elements.time.value = simple?.time || "09:00";
+    form.elements.time.value = singleScheduleTime(job.cron) || "09:00";
     form.elements.zone.value = job.timeZoneId || "";
     form.elements.cron.value = job.cron || "";
     state.card.querySelector('input[name="enabled"]').checked = job.enabled === true;
@@ -563,7 +569,7 @@
     const preset = repeatPreset(job, simple);
     const days = {once: "Once", everyday: "Every day", weekdays: "Weekdays", weekends: "Weekends"}[preset] || [1, 2, 3, 4, 5, 6, 0]
       .filter((day) => simple?.days.includes(day)).map((day) => scheduleDayNames[day]).join(", ");
-    const clock = simple?.time || (/^\d+ \d+ /.test(job.cron) ? `${String(job.cron.split(" ")[1]).padStart(2, "0")}:${String(job.cron.split(" ")[0]).padStart(2, "0")}` : "Multiple times");
+    const clock = singleScheduleTime(job.cron) || "Multiple times";
     text(scheduleField(state, "title"), clock);
     text(scheduleField(state, "recurrence"), job.repeated === false ? "Once" : days || "Advanced");
     scheduleField(state, "openEditor").setAttribute("aria-label", `Edit schedule ${job.id}, ${clock}`);

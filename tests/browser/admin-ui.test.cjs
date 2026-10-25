@@ -637,6 +637,20 @@ test("repeat presets cover once, every day, weekdays, weekends and custom days",
   assert.equal(state.schedules.devices[0].schedules[0].cron, "5 8 * * 1,4");
 });
 
+test("imported dated one-time jobs show their saved start time and Once preset", async () => {
+  await ready();
+  const card = await openSchedule(44);
+  assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "10:00");
+  assert.equal(await card.getByLabel("Repeat", {exact: true}).inputValue(), "once");
+  await card.getByLabel("Start time", {exact: true}).fill("11:15");
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.getByText("Schedule saved.", {exact: true}).waitFor();
+  const job = state.schedules.devices[0].schedules[2];
+  assert.equal(job.cron, "15 11 * * *");
+  assert.equal(job.repeated, false);
+  assert.equal(job.native_timer_name, "native-once");
+});
+
 test("cleaning mode choices translate to vacuum, mop, combined and per-room preferences", async () => {
   await ready();
   for (const [mode, fan, water, route] of [["vacuum", 102, 200, 300], ["mop", 105, 202, 300], ["custom", 106, 204, 302], ["vac_mop", 102, 202, 300]]) {
