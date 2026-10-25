@@ -9,6 +9,7 @@ from functools import lru_cache
 from importlib.resources import files
 import json
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -104,6 +105,25 @@ def register_standalone_admin_routes(
     async def admin_auth(request: Request) -> JSONResponse:
         supervisor._require_admin(request)
         return JSONResponse(supervisor._auth_payload())
+
+    @app.delete("/admin/api/vacuums/{duid}/mqtt-credentials")
+    async def admin_clear_mqtt_credentials(duid: str, request: Request) -> JSONResponse:
+        supervisor._require_admin(request)
+        origin = request.headers.get("origin")
+        if origin:
+            try:
+                parsed = urlsplit(origin)
+            except ValueError:
+                return JSONResponse({"error": "Invalid request origin"}, status_code=403)
+            if parsed.scheme not in ("http", "https") or parsed.netloc.casefold() != request.headers.get("host", "").casefold():
+                return JSONResponse({"error": "Cross-origin credential changes are not allowed"}, status_code=403)
+        try:
+            payload = supervisor.clear_device_mqtt_credentials(duid=duid)
+        except KeyError:
+            return JSONResponse({"error": "Vacuum not found"}, status_code=404)
+        except OSError:
+            return JSONResponse({"error": "Could not save the credential reset. Please try again."}, status_code=500)
+        return JSONResponse(payload)
 
     @app.post("/admin/api/auth")
     async def admin_auth_update(request: Request) -> JSONResponse:

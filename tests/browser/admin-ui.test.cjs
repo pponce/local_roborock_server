@@ -52,8 +52,8 @@ function fixtures() {
       {name: "turn_relay", running: false, enabled: false, required: false},
     ]},
     vacuums: [
-      {duid: "sample-downstairs", name: "Downstairs", model: "roborock.vacuum.a15", connected: true, onboarding: {has_public_key: true, key_state: {query_samples: 4}}},
-      {duid: "sample-upstairs", name: "Upstairs", model: "roborock.vacuum.a27", connected: false, onboarding: {has_public_key: false, key_state: {query_samples: 0}}},
+      {duid: "sample-downstairs", name: "Downstairs", model: "roborock.vacuum.a15", connected: true, mqtt_credentials: {saved: true, cleared_at: ""}, onboarding: {has_public_key: true, key_state: {query_samples: 4}}},
+      {duid: "sample-upstairs", name: "Upstairs", model: "roborock.vacuum.a27", connected: false, mqtt_credentials: {saved: false, cleared_at: ""}, onboarding: {has_public_key: false, key_state: {query_samples: 0}}},
     ],
   };
 }
@@ -90,6 +90,14 @@ async function serve(req, res) {
     return reply({ok: true});
   }
   if (!state.loggedIn) return reply({error: "Authentication required"}, 401);
+  const credentialPath = /^\/admin\/api\/vacuums\/([^/]+)\/mqtt-credentials$/.exec(url.pathname);
+  if (credentialPath && req.method === "DELETE") {
+    const vacuum = state.vacuums.find((item) => item.duid === decodeURIComponent(credentialPath[1]));
+    if (!vacuum) return reply({error: "Vacuum not found"}, 404);
+    vacuum.mqtt_credentials = {saved: false, cleared_at: "2026-10-25T00:00:00Z"};
+    vacuum.connected = false;
+    return reply({ok: true, duid: vacuum.duid, name: vacuum.name, mqtt_credentials: vacuum.mqtt_credentials});
+  }
   const schedulePath = /^\/admin\/api\/schedules\/([^/]+)\/([^/]+)$/.exec(url.pathname);
   if (schedulePath && req.method === "PATCH") {
     const device = state.schedules.devices.find((item) => item.duid === decodeURIComponent(schedulePath[1]));
@@ -120,6 +128,40 @@ async function serve(req, res) {
     default: return reply({}, 404);
   }
 }
+
+test("Diagnostics clears only the chosen vacuum after confirmation", async () => {
+  await ready();
+  const button = page.getByRole("button", {name: "Clear MQTT credentials for Downstairs", exact: true});
+  assert.equal(await page.getByRole("button", {name: "Clear MQTT credentials for Upstairs", exact: true}).isDisabled(), true);
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await button.click();
+  assert.equal(state.requests.filter((item) => item.path.endsWith("/mqtt-credentials")).length, 0);
+  page.once("dialog", (dialog) => {
+    assert.match(dialog.message(), /Downstairs/);
+    assert.match(dialog.message(), /No backup/);
+    return dialog.accept();
+  });
+  await button.click();
+  await page.waitForFunction(() => document.querySelector("#credentialList").textContent.includes("Credentials cleared for Downstairs"));
+  assert.equal(await button.isDisabled(), true);
+  assert.equal(state.auth.protocol_sessions.length, 1);
+  assert.equal(state.requests.filter((item) => item.method === "DELETE").length, 1);
+  assert.equal(state.requests.find((item) => item.method === "DELETE").path, "/admin/api/vacuums/sample-downstairs/mqtt-credentials");
+  assert.match(await page.locator("#credentialList").textContent(), /Add vacuum in LocalRock/);
+  await page.setViewportSize({width: 320, height: 900});
+  await noOverflow();
+});
+
+test("credential reset failures keep the action available for retry", async () => {
+  state.fail.add("/admin/api/vacuums/sample-downstairs/mqtt-credentials");
+  await ready();
+  page.once("dialog", (dialog) => dialog.accept());
+  const button = page.getByRole("button", {name: "Clear MQTT credentials for Downstairs", exact: true});
+  await button.click();
+  await page.waitForFunction(() => document.querySelector("#credentialList").textContent.includes("Simulated server failure"));
+  assert.equal(await button.isEnabled(), true);
+  assert.equal(state.vacuums[0].mqtt_credentials.saved, true);
+});
 
 before(async () => {
   await fs.mkdir(outputDir, {recursive: true});

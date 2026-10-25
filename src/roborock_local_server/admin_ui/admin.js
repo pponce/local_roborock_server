@@ -5,6 +5,8 @@
   const $ = (id) => document.getElementById(id);
   const cards = new Map();
   const sessionCards = new Map();
+  const credentialCards = new Map();
+  let vacuumRevision = 0;
   const scheduleCards = new Map();
   let scheduleDevices = [];
   let scheduleLoaded = false;
@@ -95,6 +97,7 @@
 
   function renderVacuums(payload) {
     const items = Array.isArray(payload.vacuums) ? payload.vacuums : [];
+    renderCredentials(items);
     const connected = items.filter((item) => item.connected).length;
     text($("connectedCount"), `${connected} / ${items.length}`);
     text($("vacuumCount"), items.length ? `${items.length} in your local inventory` : "Import a vacuum to get started");
@@ -140,6 +143,73 @@
     for (const [id, card] of cards) {
       if (!seen.has(id)) { card.remove(); cards.delete(id); }
     }
+  }
+
+  function renderCredentials(items) {
+    const list = $("credentialList");
+    list.setAttribute("aria-busy", "false");
+    const devices = items.filter((vacuum) => vacuum.duid && vacuum.mqtt_credentials);
+    if (!devices.length) {
+      credentialCards.clear();
+      text(list, "No saved vacuum credentials are available.");
+      return;
+    }
+    if (!credentialCards.size) list.replaceChildren();
+    const seen = new Set();
+    for (const vacuum of devices) {
+      const id = String(vacuum.duid);
+      seen.add(id);
+      let state = credentialCards.get(id);
+      if (!state) {
+        const card = $("credentialTemplate").content.firstElementChild.cloneNode(true);
+        state = {card, vacuum, busy: false};
+        credentialCards.set(id, state);
+        list.append(card);
+        const button = card.querySelector("button");
+        button.addEventListener("click", async () => {
+          if (state.busy || !state.vacuum.mqtt_credentials.saved) return;
+          const name = state.vacuum.name || id;
+          if (!window.confirm(`Clear MQTT credentials for ${name}? This disconnects this vacuum. You will need to re-pair it using Add vacuum in LocalRock. Its inventory entry, keys, schedules, and app logins are kept. No backup is created.`)) return;
+          const result = card.querySelector('[data-field="result"]');
+          state.busy = true;
+          vacuumRevision += 1;
+          updateCredentialCard(state);
+          result.hidden = true;
+          try {
+            const payload = await fetchJson(`/admin/api/vacuums/${encodeURIComponent(id)}/mqtt-credentials`, {method: "DELETE"});
+            state.vacuum = {...state.vacuum, mqtt_credentials: payload.mqtt_credentials, connected: false};
+            text(result, `Credentials cleared for ${name}. Enable Allow new connections, reset this vacuum’s Wi-Fi, then use Add vacuum in LocalRock to re-pair it.`);
+            result.className = "message success";
+          } catch (error) {
+            text(result, error.message);
+            result.className = "message error";
+          } finally {
+            vacuumRevision += 1;
+            state.busy = false;
+            result.hidden = false;
+            updateCredentialCard(state);
+          }
+          await refresh();
+        });
+      }
+      if (!state.busy) state.vacuum = vacuum;
+      updateCredentialCard(state);
+    }
+    for (const [id, state] of credentialCards) {
+      if (!seen.has(id) && !state.busy) { state.card.remove(); credentialCards.delete(id); }
+    }
+  }
+
+  function updateCredentialCard(state) {
+    const {card, vacuum, busy} = state;
+    const credentials = vacuum.mqtt_credentials;
+    const name = vacuum.name || vacuum.duid;
+    text(card.querySelector('[data-field="name"]'), name);
+    text(card.querySelector('[data-field="detail"]'), credentials.saved ? "MQTT credentials saved" : credentials.cleared_at ? "Credentials cleared · Re-pair this vacuum to connect" : "No MQTT credentials saved");
+    const button = card.querySelector("button");
+    button.disabled = busy || !credentials.saved;
+    button.setAttribute("aria-label", `Clear MQTT credentials for ${name}`);
+    text(button, busy ? "Clearing…" : "Clear MQTT credentials");
   }
 
   function renderHealth(status) {
@@ -547,6 +617,7 @@
     if (refreshPromise) return refreshPromise;
     if (sessionExpired) return;
     const revision = authRevision;
+    const deviceRevision = vacuumRevision;
     $("refresh").disabled = true;
     refreshPromise = (async () => {
       const [status, auth, vacuums] = await Promise.allSettled([
@@ -565,7 +636,7 @@
         if (revision === authRevision && !connectionsBusy) renderAuth(auth.value);
       } else failures.push(`Connection settings: ${auth.reason.message}`);
       if (vacuums.status === "fulfilled") {
-        renderVacuums(vacuums.value);
+        if (deviceRevision === vacuumRevision) renderVacuums(vacuums.value);
         message("vacuumError");
       } else {
         $("vacuumSummary").setAttribute("aria-busy", "false");

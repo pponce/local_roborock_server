@@ -96,6 +96,11 @@
     <section id="diagnostics" class="panel section" aria-labelledby="diagnosticsTitle">
       <div class="section-heading"><div><h2 id="diagnosticsTitle">Diagnostics</h2><p class="muted">Service health and details for troubleshooting.</p></div><span class="badge neutral">Advanced</span></div>
       <div id="serviceList" class="service-grid">Loading services…</div>
+      <div class="credential-section" aria-labelledby="credentialsTitle">
+        <h3 id="credentialsTitle">Vacuum MQTT credentials</h3>
+        <p class="helper">Clear a vacuum’s saved server login before re-pairing it. This disconnects that vacuum and keeps its inventory entry, keys, schedules, and app logins. No backup is created.</p>
+        <div id="credentialList" class="session-list" aria-busy="true">Loading credentials…</div>
+      </div>
       <div class="diagnostic-grid"><details class="technical"><summary>Raw health data</summary><pre id="health">Waiting for server…</pre></details><details class="technical"><summary>Raw vacuum data</summary><pre id="vacuums">Waiting for inventory…</pre></details></div>
     </section>
 
@@ -134,5 +139,6 @@
       <details class="technical"><summary>Map, rooms and cleaning settings</summary><p class="helper">These saved settings are read-only here. Map references and room IDs must still match the vacuum.</p><pre data-field="settings"></pre></details>
     </article>
   </template>
+  <template id="credentialTemplate"><article class="session-card"><div class="session-copy"><h4 data-field="name"></h4><p data-field="detail" class="helper"></p><p data-field="result" class="message" role="status" hidden></p></div><button class="button danger" type="button">Clear MQTT credentials</button></article></template>
 </body>
 </html>

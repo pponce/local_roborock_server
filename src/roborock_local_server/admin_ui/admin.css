@@ -42,6 +42,9 @@ h2 { font-size: 1.12rem; line-height: 1.4; letter-spacing: -.02em; font-weight: 
 h3 { font-size: 1.08rem; line-height: 1.4; font-weight: 650; }
 svg { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .muted, .helper, .subtle { color: var(--muted); }
+.credential-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.credential-section h4 { margin: 0; font-size: 1rem; }
+.credential-section .session-list { margin-top: 14px; }
 .muted { margin-top: 5px; font-size: .9rem; }
 .subtle, .helper { font-size: .8rem; }
 .helper { margin-top: 7px; line-height: 1.65; }
