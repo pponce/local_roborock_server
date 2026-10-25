@@ -421,7 +421,7 @@ test("advanced recurrence survives unrelated permission edits and unsupported AP
   const card = await openSchedule(43);
   assert.equal(await card.getByLabel("Recurrence format").inputValue(), "cron");
   assert.equal(await card.getByLabel("Timezone", {exact: true}).inputValue(), "Europe/Berlin");
-  await card.getByLabel("Allow this server to run this schedule").check();
+  await card.getByLabel("Enable schedule").check();
   await card.getByRole("button", {name: "Save schedule"}).click();
   await page.waitForFunction(() => document.querySelector('.schedule-card[data-job-id="43"] [data-field="result"]').textContent.includes("Schedule saved"));
   assert.deepEqual(state.requests.find((item) => item.method === "PATCH").body, {revision: "revision-43", enabled: true});

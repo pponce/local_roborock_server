@@ -21,7 +21,7 @@ or will clean.
 - Show one-time jobs read-only. Creating/deleting jobs, changing cleaning
   settings, and writing robot-native timers are outside this first editor.
 
-**Allow this server to run this schedule** controls only the stored job's
+**Enable schedule** controls only the stored job's
 `enabled` flag. A native job also requires its robot-side timer to be on. This
 editor does not query or modify that timer and labels its state **Not checked**.
 Do not interpret an enabled server job as proof that a native timer survived

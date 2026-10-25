@@ -360,11 +360,11 @@
     }
     text(scheduleField(state, "next"), next);
     text(scheduleField(state, "timerState"), job.native_timer_name
-      ? "Robot timer: not checked. Server permission alone does not confirm it will run."
+      ? "Robot timer: not checked. The robot's timer must also be enabled."
       : "This schedule uses the server's legacy timer compatibility mode.");
     text(scheduleField(state, "enabledHelp"), job.native_timer_name
-      ? "This setting changes server permission only. It does not turn the robot's own timer on or off."
-      : "When allowed, this server can start the scheduled clean. Next scheduled time updates after saving.");
+      ? "Checked: this server can trigger the schedule. Unchecked: this server will not trigger it. Save to apply. This does not turn the robot's own timer on or off."
+      : "Checked: this server can trigger the schedule. Unchecked: this server will not trigger it. Save to apply.");
     scheduleField(state, "readOnly").hidden = job.editable === true;
     state.card.querySelector(".schedule-editor").hidden = job.editable !== true && !state.dirty && !state.forcedConflict;
     text(scheduleField(state, "settings"), JSON.stringify({native_timer_name: job.native_timer_name ?? null, ...job.settings}, null, 2));

@@ -55,7 +55,7 @@ def test_admin_reset_requires_login_and_same_origin_and_preserves_data(tmp_path,
     # A second reset is safe and does not touch another device's pairing.
     supervisor.runtime_state.start_onboarding_session(target_duid="upstairs", target_did="456")
     assert client.delete(url).status_code == 200
-    assert supervisor.runtime_state.onboarding_session_snapshot()["target_duid"] == "upstairs"
+    assert supervisor.runtime_state.onboarding_session_snapshot()["target"]["duid"] == "upstairs"
     def fail_save():
         raise OSError("private filesystem detail")
     monkeypatch.setattr(credentials, "_save_locked", fail_save)
