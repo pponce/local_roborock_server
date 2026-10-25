@@ -7,9 +7,11 @@ on:
     paths:
       - src/roborock_local_server/standalone_admin.py
       - src/roborock_local_server/admin_schedules.py
+      - src/roborock_local_server/admin_schedule_settings.py
       - src/roborock_local_server/admin_ui/**
       - tests/test_admin_api.py
       - tests/test_admin_schedules.py
+      - tests/test_admin_schedule_settings.py
       - tests/browser/**
       - .github/workflows/admin-ui-tests.yml
       - pyproject.toml

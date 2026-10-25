@@ -1,4 +1,4 @@
-"""Dashboard edits use the same persistent jobs without rewriting robot settings."""
+"""Dashboard edits preserve native identity and verify room/map bindings."""
 
 import copy
 from datetime import datetime
@@ -62,8 +62,93 @@ def test_schedule_routes_require_admin_session(schedule_admin):
     client, _, paths, _ = schedule_admin
     before = paths.inventory_path.read_bytes()
     assert client.get("/admin/api/schedules").status_code == 401
+    assert client.get("/admin/api/schedules/test-vacuum/rooms").status_code == 401
     assert patch(client, revision="unknown", enabled=False).status_code == 401
     assert paths.inventory_path.read_bytes() == before
+
+
+def test_friendly_cleaning_edits_preserve_other_native_options(schedule_admin, monkeypatch):
+    client, _, paths, original = schedule_admin
+    login(client)
+
+    async def no_robot_query(*args):
+        raise AssertionError("An unrelated edit must not require an online vacuum")
+
+    monkeypatch.setattr(admin_schedules, "read_room_catalog", no_robot_query)
+    assert row(client)["settings_editable"] is True
+    response = patch(client, revision=row(client)["revision"], settings={"fan_power": 103, "water_box_mode": 201, "mop_mode": 301, "repeat": 2})
+    assert response.status_code == 200
+    saved = json.loads(paths.inventory_path.read_text())["schedules"]["test-vacuum"][0]
+    expected = copy.deepcopy(original)
+    expected["param"]["params"][0].update(fan_power=103, water_box_mode=201, mop_mode=301, repeat=2)
+    assert saved == expected
+
+
+def test_room_api_revalidates_loaded_map_and_revision_before_saving(schedule_admin, monkeypatch):
+    client, _, paths, _ = schedule_admin
+    login(client)
+    catalog = {"revision": "map-0-rooms-v1", "map_index": 0, "maps": [{"id": 0, "name": "Downstairs"}],
+               "rooms": [{"id": 16, "name": "Kitchen"}, {"id": 18, "name": "Hall"}]}
+    calls = []
+
+    async def read(supervisor, duid):
+        calls.append(duid)
+        return copy.deepcopy(catalog)
+
+    monkeypatch.setattr(admin_schedules, "read_room_catalog", read)
+    response = client.get("/admin/api/schedules/test-vacuum/rooms")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    revision = row(client)["revision"]
+    before = paths.inventory_path.read_bytes()
+    for room_revision, settings in [(None, {"segments": "16"}), ("old-map", {"segments": "16"}),
+                                   (catalog["revision"], {"map_index": 1}), (catalog["revision"], {"segments": "99"})]:
+        response = patch(client, revision=revision, room_revision=room_revision, settings=settings)
+        assert response.status_code == 409
+        assert response.json()["code"] == "room_catalog_changed"
+        assert paths.inventory_path.read_bytes() == before
+    response = patch(client, revision=revision, room_revision=catalog["revision"], settings={"segments": "18", "map_index": 0})
+    assert response.status_code == 200
+    assert response.json()["schedule"]["settings"]["segments"] == "18"
+    assert calls == ["test-vacuum"] * 6
+
+
+def test_read_room_catalog_uses_only_selected_robot_and_read_commands(schedule_admin, monkeypatch):
+    import asyncio
+    from shared import routine_runner
+    from roborock_local_server.admin_schedule_settings import read_room_catalog, RoomCatalogError
+
+    _, supervisor, _, _ = schedule_admin
+    calls = []
+    replies = [[{"map_status": 3}], {"map_info": [{"mapFlag": 0, "name": "Downstairs"}]}, [[16, "cloud-room"]], [{"map_status": 3}]]
+
+    class Client:
+        def __init__(self, context, device, logger):
+            assert device["duid"] == "test-vacuum"
+
+        async def connect(self):
+            calls.append("connect")
+
+        async def send_command(self, command, params):
+            assert params == []
+            calls.append(str(command))
+            if not replies:
+                raise TimeoutError("PRIVATE_CONNECTION_DETAIL")
+            return replies.pop(0)
+
+        async def close(self):
+            calls.append("close")
+
+    monkeypatch.setattr(routine_runner, "_RoutineMqttClient", Client)
+    result = asyncio.run(read_room_catalog(supervisor, "test-vacuum"))
+    assert result["rooms"][0]["id"] == 16
+    assert calls == ["connect", "get_status", "get_multi_maps_list", "get_room_mapping", "get_status", "close"]
+    with pytest.raises(RoomCatalogError, match="Could not read rooms") as error:
+        asyncio.run(read_room_catalog(supervisor, "test-vacuum"))
+    assert "PRIVATE_CONNECTION_DETAIL" not in str(error.value)
+    assert calls[-1] == "close"
+    with pytest.raises(KeyError):
+        asyncio.run(read_room_catalog(supervisor, "other-vacuum"))
 
 
 def test_lists_native_imports_and_next_run_without_exposing_inventory(schedule_admin):
@@ -146,7 +231,7 @@ def test_change_between_validation_and_write_is_rejected(schedule_admin, monkeyp
 @pytest.mark.parametrize("fields", [
     {"enabled": "false"}, {"enabled": 0}, {"cron": "65 8 * * *"}, {"cron": []},
     {"timeZoneId": "Not/A_Zone"}, {"timeZoneId": ""}, {"timeZoneId": None},
-    {"param": {"params": []}}, {"id": 800}, {"repeated": False},
+    {"param": {"params": []}}, {"id": 800}, {"repeated": "false"},
 ])
 def test_invalid_or_out_of_scope_edits_do_not_write(schedule_admin, fields):
     client, _, paths, _ = schedule_admin
@@ -157,16 +242,24 @@ def test_invalid_or_out_of_scope_edits_do_not_write(schedule_admin, fields):
     assert paths.inventory_path.read_bytes() == before
 
 
-def test_one_time_imports_are_visible_but_read_only(schedule_admin):
+def test_once_and_recurring_schedules_can_be_edited_without_changing_native_identity(schedule_admin):
     client, _, paths, _ = schedule_admin
     inventory = json.loads(paths.inventory_path.read_text())
     inventory["schedules"]["test-vacuum"][0]["repeated"] = "false"
     paths.inventory_path.write_text(json.dumps(inventory))
     login(client)
     data = row(client)
-    assert data["editable"] is False
+    assert data["editable"] is True
     assert data["repeated"] is False
-    assert patch(client, revision=data["revision"], enabled=False).status_code == 409
+    assert patch(client, revision=data["revision"], enabled=False).status_code == 200
+    response = patch(client, revision=row(client)["revision"], repeated=True, cron="30 10 * * 0,6")
+    assert response.status_code == 200
+    assert response.json()["schedule"]["repeated"] is True
+    response = patch(client, revision=row(client)["revision"], repeated=False, cron="30 10 * * *")
+    assert response.status_code == 200
+    saved = json.loads(paths.inventory_path.read_text())["schedules"]["test-vacuum"][0]
+    assert saved["repeated"] is False
+    assert saved["param"] == inventory["schedules"]["test-vacuum"][0]["param"]
 
 
 def test_missing_and_duplicate_jobs_are_not_created_or_arbitrarily_edited(schedule_admin):

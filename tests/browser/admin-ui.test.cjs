@@ -21,17 +21,24 @@ function fixtures() {
     fail: new Set(),
     requests: [],
     scheduleConflict: false,
+    roomConflict: false,
+    roomCatalog: {revision: "downstairs-rooms-v1", map_index: 0, maps: [{id: 0, name: "Downstairs"}, {id: 1, name: "Upstairs"}],
+      rooms: [{id: 16, room_id: "cloud-kitchen", name: "Kitchen"}, {id: 17, room_id: "cloud-hall", name: "Hall"}, {id: 18, room_id: "cloud-office", name: "Office"}]},
     schedules: {
       supported: true, generated_at: "2026-10-24T16:00:00Z", server_timezone: "America/Los_Angeles",
       devices: [
         {duid: "sample-downstairs", name: "Downstairs", model: "roborock.vacuum.a15", connected: true, schedules: [
           {id: 42, revision: "revision-42", cron: "30 9 * * 1-5", timeZoneId: "America/Los_Angeles", enabled: true, repeated: true,
             next_run_at: "2026-10-26T16:30:00Z", native_timer_name: "native-kitchen", native_timer_state: "not_checked", editable: true,
-            settings: {map_index: 0, segments: "16,17", fan_power: 102, clean_order_mode: 1}},
+            settings_editable: true,
+            setting_choices: {fan_power: [{value: 101, label: "Quiet"}, {value: 102, label: "Balanced"}, {value: 103, label: "Turbo"}, {value: 104, label: "Max"}, {value: 105, label: "Off / mop only"}, {value: 106, label: "Room settings"}],
+              water_box_mode: [{value: 200, label: "Off"}, {value: 201, label: "Low"}, {value: 202, label: "Medium"}, {value: 203, label: "High"}, {value: 204, label: "Room settings"}],
+              mop_mode: [{value: 300, label: "Standard"}, {value: 301, label: "Deep"}, {value: 302, label: "Room settings"}], repeat: [{value: 1, label: "1 pass"}, {value: 2, label: "2 passes"}, {value: 3, label: "3 passes"}]},
+            settings: {map_index: 0, segments: "16,17", fan_power: 102, water_box_mode: 202, mop_mode: 300, repeat: 1, clean_order_mode: 1, mop_template_id: 4, clean_mop: 1}},
           {id: 43, revision: "revision-43", cron: "0,30 8-9 * * *", timeZoneId: "Europe/Berlin", enabled: false, repeated: true,
             next_run_at: null, native_timer_name: null, native_timer_state: null, settings: {}, editable: true},
           {id: 44, revision: "revision-44", cron: "0 10 26 10 *", timeZoneId: "America/Los_Angeles", enabled: true, repeated: false,
-            next_run_at: "2026-10-26T17:00:00Z", native_timer_name: "native-once", native_timer_state: "not_checked", settings: {}, editable: false},
+            next_run_at: "2026-10-26T17:00:00Z", native_timer_name: "native-once", native_timer_state: "not_checked", settings: {}, editable: true},
         ]},
         {duid: "sample-upstairs", name: "Upstairs", model: "roborock.vacuum.a27", connected: false, schedules: [
           {id: 42, revision: "upstairs-revision-42", cron: "0 11 * * *", timeZoneId: "America/Los_Angeles", enabled: true, repeated: true,
@@ -99,12 +106,15 @@ async function serve(req, res) {
     return reply({ok: true, duid: vacuum.duid, name: vacuum.name, mqtt_credentials: vacuum.mqtt_credentials});
   }
   const schedulePath = /^\/admin\/api\/schedules\/([^/]+)\/([^/]+)$/.exec(url.pathname);
+  if (schedulePath && schedulePath[2] === "rooms" && req.method === "GET") return reply(state.roomCatalog);
   if (schedulePath && req.method === "PATCH") {
     const device = state.schedules.devices.find((item) => item.duid === decodeURIComponent(schedulePath[1]));
     const job = device?.schedules.find((item) => String(item.id) === decodeURIComponent(schedulePath[2]));
     if (!job) return reply({error: "Schedule not found"}, 404);
     if (state.scheduleConflict || body.revision !== job.revision) return reply({error: "Schedule changed. Reload the saved values before editing."}, 409);
-    for (const key of ["cron", "timeZoneId", "enabled"]) if (Object.hasOwn(body, key)) job[key] = body[key];
+    if (state.roomConflict && body.settings?.segments) return reply({error: "The map or room list changed. Refresh rooms and review your selection before saving.", code: "room_catalog_changed"}, 409);
+    for (const key of ["cron", "timeZoneId", "enabled", "repeated"]) if (Object.hasOwn(body, key)) job[key] = body[key];
+    if (body.settings) Object.assign(job.settings, body.settings);
     job.revision += "-saved";
     return reply({schedule: job});
   }
@@ -343,7 +353,7 @@ function scheduleCard(id = 42, duid = "sample-downstairs") {
 
 async function openSchedule(id = 42) {
   const card = scheduleCard(id);
-  await card.locator(".schedule-editor > summary").click();
+  await card.locator('[data-field="openEditor"]').click();
   return card;
 }
 
@@ -353,9 +363,13 @@ test("schedule list includes native jobs and distinguishes server permission fro
   assert.equal(await page.locator("#scheduleDevice").inputValue(), "sample-downstairs");
   assert.equal(await page.locator(".schedule-card:visible").count(), 3);
   assert.match(await scheduleCard().locator('[data-field="next"]').textContent(), /America\/Los_Angeles/);
-  assert.equal(await scheduleCard().locator('[data-field="enabledBadge"]').textContent(), "Server enabled");
+  assert.equal(await scheduleCard().getByLabel("Enable schedule", {exact: true}).isChecked(), true);
+  assert.equal(await scheduleCard().locator('.schedule-heading input[name="enabled"]').isVisible(), true);
+  assert.equal(await scheduleCard(44).getByLabel("Enable schedule", {exact: true}).isEnabled(), true);
   assert.match(await scheduleCard().locator('[data-field="timerState"]').textContent(), /not checked/);
-  assert.equal(await scheduleCard(44).locator(".schedule-editor").isVisible(), false);
+  assert.equal(await scheduleCard(44).locator(".schedule-dialog").isVisible(), false);
+  assert.equal(await scheduleCard().locator('[data-field="title"]').textContent(), "09:30");
+  assert.equal(await scheduleCard().locator('[data-field="recurrence"]').textContent(), "Weekdays");
   await page.locator("#scheduleDevice").selectOption("sample-upstairs");
   assert.equal(await page.locator(".schedule-card:visible").count(), 1);
   assert.match(await page.locator("#scheduleSummary").textContent(), /Not connected to this server/);
@@ -365,65 +379,66 @@ test("schedule edits survive polling and save only changed allowed fields", asyn
   await ready();
   const card = await openSchedule();
   const originalSettings = structuredClone(state.schedules.devices[0].schedules[0].settings);
-  await card.getByLabel("Time", {exact: true}).fill("10:15");
+  await card.getByLabel("Start time", {exact: true}).fill("10:15");
+  await card.getByLabel("Repeat", {exact: true}).selectOption("custom");
   await card.getByLabel("Fri", {exact: true}).uncheck();
-  await card.getByLabel("Time", {exact: true}).focus();
+  await card.getByLabel("Start time", {exact: true}).focus();
   await page.waitForTimeout(2300);
-  assert.equal(await card.getByLabel("Time", {exact: true}).inputValue(), "10:15");
-  assert.equal(await card.locator(".schedule-editor").getAttribute("open"), "");
+  assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "10:15");
+  assert.equal(await card.locator(".schedule-dialog").getAttribute("open"), "");
   assert.equal(await page.evaluate(() => document.activeElement.name), "time");
   await card.getByRole("button", {name: "Save schedule"}).click();
-  await page.waitForFunction(() => document.querySelector('.schedule-card[data-device-id="sample-downstairs"][data-job-id="42"] [data-field="result"]').textContent.includes("Schedule saved"));
+  await page.waitForFunction(() => document.querySelector('.schedule-card[data-device-id="sample-downstairs"][data-job-id="42"] [data-field="savedResult"]').textContent.includes("Schedule saved"));
   const request = state.requests.find((item) => item.method === "PATCH");
   assert.deepEqual(request.body, {revision: "revision-42", cron: "15 10 * * 1,2,3,4"});
   assert.deepEqual(state.schedules.devices[0].schedules[0].settings, originalSettings);
   assert.equal(state.schedules.devices[0].schedules[0].native_timer_name, "native-kitchen");
-  assert.equal(await card.getByRole("button", {name: "Save schedule"}).isDisabled(), true);
+  assert.equal(await card.locator('[data-field="save"]').isDisabled(), true);
 });
 
 test("schedule failures preserve edits and revision conflicts require a fresh reload", async () => {
   await ready();
   const card = await openSchedule();
-  await card.getByLabel("Time", {exact: true}).fill("10:45");
+  await card.getByLabel("Start time", {exact: true}).fill("10:45");
   state.fail.add("/admin/api/schedules/sample-downstairs/42");
   await card.getByRole("button", {name: "Save schedule"}).click();
   await page.waitForFunction(() => document.querySelector('.schedule-card[data-device-id="sample-downstairs"][data-job-id="42"] [data-field="result"]').textContent.includes("failure"));
-  assert.equal(await card.getByLabel("Time", {exact: true}).inputValue(), "10:45");
+  assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "10:45");
   assert.equal(await card.getByRole("button", {name: "Save schedule"}).isEnabled(), true);
   state.fail.clear();
   state.scheduleConflict = true;
   await card.getByRole("button", {name: "Save schedule"}).click();
   await page.waitForFunction(() => document.querySelector('.schedule-card[data-device-id="sample-downstairs"][data-job-id="42"] [data-field="result"]').textContent.includes("Schedule changed"));
-  assert.equal(await card.getByRole("button", {name: "Save schedule"}).isDisabled(), true);
-  assert.equal(await card.getByLabel("Time", {exact: true}).inputValue(), "10:45");
+  assert.equal(await card.locator('[data-field="save"]').isDisabled(), true);
+  assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "10:45");
   state.schedules.devices[0].schedules[0].cron = "20 12 * * 1-5";
   state.schedules.devices[0].schedules[0].revision = "remote-revision";
   state.scheduleConflict = false;
   await card.getByRole("button", {name: "Discard edits and reload"}).click();
   await page.waitForFunction(() => document.querySelector('.schedule-card[data-device-id="sample-downstairs"][data-job-id="42"] input[name="time"]').value === "12:20");
-  assert.equal(await card.getByRole("button", {name: "Save schedule"}).isDisabled(), true);
+  assert.equal(await card.locator('[data-field="save"]').isDisabled(), true);
 });
 
 test("background schedule changes never overwrite an unsaved form", async () => {
   await ready();
   const card = await openSchedule();
-  await card.getByLabel("Time", {exact: true}).fill("11:10");
+  await card.getByLabel("Start time", {exact: true}).fill("11:10");
   state.schedules.devices[0].schedules[0].cron = "0 14 * * 1-5";
   state.schedules.devices[0].schedules[0].revision = "changed-by-app";
-  await page.locator("#refreshSchedules").click();
+  await page.evaluate(() => document.getElementById("refreshSchedules").click());
   await page.waitForFunction(() => document.querySelector('.schedule-card[data-device-id="sample-downstairs"][data-job-id="42"] [data-field="editStatus"]').textContent.includes("Changed elsewhere"));
-  assert.equal(await card.getByLabel("Time", {exact: true}).inputValue(), "11:10");
-  assert.equal(await card.getByRole("button", {name: "Save schedule"}).isDisabled(), true);
+  assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "11:10");
+  assert.equal(await card.locator('[data-field="save"]').isDisabled(), true);
 });
 
 test("advanced recurrence survives unrelated permission edits and unsupported API leaves dashboard usable", async () => {
   await ready();
   const card = await openSchedule(43);
-  assert.equal(await card.getByLabel("Recurrence format").inputValue(), "cron");
+  assert.equal(await card.getByLabel("Repeat", {exact: true}).inputValue(), "cron");
   assert.equal(await card.getByLabel("Timezone", {exact: true}).inputValue(), "Europe/Berlin");
+  await card.getByRole("button", {name: "Close", exact: true}).click();
   await card.getByLabel("Enable schedule").check();
-  await card.getByRole("button", {name: "Save schedule"}).click();
-  await page.waitForFunction(() => document.querySelector('.schedule-card[data-job-id="43"] [data-field="result"]').textContent.includes("Schedule saved"));
+  await page.waitForFunction(() => document.querySelector('.schedule-card[data-job-id="43"] [data-field="toggleResult"]').textContent.includes("Schedule enabled"));
   assert.deepEqual(state.requests.find((item) => item.method === "PATCH").body, {revision: "revision-43", enabled: true});
   assert.equal(state.schedules.devices[0].schedules[1].cron, "0,30 8-9 * * *");
   state.fail.add("/admin/api/schedules");
@@ -440,9 +455,10 @@ test("schedule text is inert and the expanded editor fits a small mobile viewpor
   state.schedules.devices[0].name = '<img src=x onerror="window.injected=true">';
   state.schedules.devices[0].schedules[0].native_timer_name = '<img src=x onerror="window.injected=true">';
   state.schedules.devices[0].schedules[0].settings.segments = '<script>window.injected=true</script>';
+  state.roomCatalog.rooms[0].name = '<img src=x onerror="window.injected=true">';
   await ready();
   const card = await openSchedule();
-  await card.locator(".technical > summary").click();
+  await card.locator(".schedule-details > summary").click();
   assert.equal(await page.locator("#schedules img").count(), 0);
   assert.equal(await page.evaluate(() => window.injected), undefined);
   for (const width of [320, 390, 768]) {
@@ -451,4 +467,217 @@ test("schedule text is inert and the expanded editor fits a small mobile viewpor
   }
   await page.locator("#schedules").scrollIntoViewIfNeeded();
   await page.screenshot({path: path.join(outputDir, "schedule-editor-mobile.png"), fullPage: true});
+});
+
+test("header enablement saves immediately while the editor is collapsed and keeps a draft", async () => {
+  await ready();
+  const card = scheduleCard();
+  assert.equal(await card.locator(".schedule-dialog").getAttribute("open"), null);
+  await card.getByLabel("Enable schedule", {exact: true}).uncheck();
+  await card.getByText("Schedule disabled on this server.", {exact: true}).waitFor();
+  assert.deepEqual(state.requests.find((item) => item.method === "PATCH").body, {revision: "revision-42", enabled: false});
+  await openSchedule();
+  await card.getByLabel("Start time", {exact: true}).fill("11:45");
+  await card.getByLabel("Suction", {exact: true}).selectOption("103");
+  await card.getByRole("button", {name: "Close", exact: true}).click();
+  await card.getByLabel("Enable schedule", {exact: true}).check();
+  await card.getByText("Schedule enabled on this server.", {exact: true}).waitFor();
+  assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "11:45");
+  assert.equal(await card.getByLabel("Suction", {exact: true}).inputValue(), "103");
+  assert.equal(state.schedules.devices[0].schedules[0].settings.fan_power, 102);
+  await openSchedule();
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.getByText("Schedule saved.", {exact: true}).waitFor();
+  const request = state.requests.filter((item) => item.method === "PATCH").at(-1);
+  assert.equal(request.body.revision, "revision-42-saved-saved");
+  assert.equal(request.body.cron, "45 11 * * 1,2,3,4,5");
+  assert.deepEqual(request.body.settings, {fan_power: 103});
+});
+
+test("failed enablement restores the checkbox and leaves the time draft intact", async () => {
+  await ready();
+  const card = await openSchedule();
+  await card.getByLabel("Start time", {exact: true}).fill("11:45");
+  state.fail.add("/admin/api/schedules/sample-downstairs/42");
+  await card.getByRole("button", {name: "Close", exact: true}).click();
+  await card.getByLabel("Enable schedule", {exact: true}).uncheck();
+  await card.locator('[data-field="toggleResult"]').filter({hasText: "failure"}).waitFor();
+  assert.equal(await card.getByLabel("Enable schedule", {exact: true}).isChecked(), true);
+  assert.equal(await card.getByLabel("Enable schedule", {exact: true}).isEnabled(), true);
+  assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "11:45");
+});
+
+test("named room and cleaning controls send only chosen settings and keep native extras", async () => {
+  await ready();
+  const card = await openSchedule();
+  await card.getByLabel("Kitchen", {exact: true}).waitFor();
+  assert.equal(await card.getByLabel("Kitchen", {exact: true}).isChecked(), true);
+  assert.equal(await card.getByLabel("Hall", {exact: true}).isChecked(), true);
+  await card.getByLabel("Hall", {exact: true}).uncheck();
+  await card.getByLabel("Office", {exact: true}).check();
+  await card.getByLabel("Suction", {exact: true}).selectOption({label: "Turbo"});
+  await card.getByLabel("Water level", {exact: true}).selectOption({label: "Low"});
+  await card.getByLabel("Mopping route", {exact: true}).selectOption({label: "Deep"});
+  await card.getByLabel("Cleaning passes", {exact: true}).selectOption({label: "2 passes"});
+  await page.evaluate(() => document.getElementById("refresh").click());
+  await page.waitForFunction(() => !document.getElementById("refresh").disabled);
+  assert.equal(await card.getByLabel("Office", {exact: true}).isChecked(), true);
+  assert.equal(await card.getByLabel("Water level", {exact: true}).inputValue(), "201");
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.getByText("Schedule saved.", {exact: true}).waitFor();
+  const request = state.requests.find((item) => item.method === "PATCH");
+  assert.deepEqual(request.body, {revision: "revision-42", room_revision: "downstairs-rooms-v1",
+    settings: {fan_power: 103, water_box_mode: 201, mop_mode: 301, repeat: 2, map_index: 0, segments: "16,18"}});
+  assert.equal(state.schedules.devices[0].schedules[0].settings.mop_template_id, 4);
+  assert.equal(state.schedules.devices[0].schedules[0].settings.clean_order_mode, 1);
+  assert.equal(await card.locator("pre").count(), 0);
+});
+
+test("empty room selection is rejected and whole home is explicit", async () => {
+  await ready();
+  const card = await openSchedule();
+  await card.getByLabel("Kitchen", {exact: true}).uncheck();
+  await card.getByLabel("Hall", {exact: true}).uncheck();
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.getByText("Choose at least one room or select Whole home.", {exact: true}).waitFor();
+  assert.equal(state.requests.some((item) => item.method === "PATCH"), false);
+  await card.getByLabel("Full", {exact: true}).check();
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.getByText("Schedule saved.", {exact: true}).waitFor();
+  assert.deepEqual(state.requests.find((item) => item.method === "PATCH").body.settings, {map_index: 0, segments: "0"});
+});
+
+test("room changes can be reviewed without discarding time and cleaning drafts", async () => {
+  await ready();
+  const card = await openSchedule();
+  await card.getByLabel("Start time", {exact: true}).fill("11:15");
+  await card.getByLabel("Hall", {exact: true}).uncheck();
+  state.roomConflict = true;
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.locator('[data-field="result"]').filter({hasText: "room list changed"}).waitFor();
+  state.roomCatalog.revision = "downstairs-rooms-v2";
+  state.roomCatalog.rooms[0].name = "Dining room";
+  await card.getByRole("button", {name: "Refresh rooms", exact: true}).click();
+  await card.getByLabel("Dining room", {exact: true}).waitFor();
+  assert.equal(await card.getByRole("button", {name: "Save schedule", exact: true}).isDisabled(), true);
+  assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "11:15");
+  assert.equal(await card.getByLabel("Dining room", {exact: true}).isChecked(), true);
+  await card.getByRole("button", {name: "Use this room selection", exact: true}).click();
+  state.roomConflict = false;
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.getByText("Schedule saved.", {exact: true}).waitFor();
+  const request = state.requests.filter((item) => item.method === "PATCH").at(-1);
+  assert.equal(request.body.room_revision, "downstairs-rooms-v2");
+  assert.equal(request.body.cron, "15 11 * * 1,2,3,4,5");
+});
+
+test("map changes clear cross-floor room choices and a failed room read leaves other edits usable", async () => {
+  state.schedules.devices[0].schedules[0].settings.map_index = 1;
+  await ready();
+  const card = await openSchedule();
+  await card.getByText("Map and rooms loaded from the vacuum.", {exact: true}).waitFor();
+  assert.equal(await card.getByLabel("Rooms", {exact: true}).isDisabled(), true);
+  await card.getByLabel("Map", {exact: true}).selectOption("0");
+  assert.equal(await card.getByLabel("Kitchen", {exact: true}).isChecked(), false);
+  assert.equal(await card.getByLabel("Hall", {exact: true}).isChecked(), false);
+  state.fail.add("/admin/api/schedules/sample-downstairs/rooms");
+  await card.getByRole("button", {name: "Refresh rooms", exact: true}).click();
+  await card.locator('[data-field="roomStatus"]').filter({hasText: "failure"}).waitFor();
+  await card.getByRole("button", {name: "Discard edits and reload", exact: true}).click();
+  await card.getByText("Loaded the latest saved values.", {exact: true}).waitFor();
+  await card.getByLabel("Suction", {exact: true}).selectOption("104");
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.getByText("Schedule saved.", {exact: true}).waitFor();
+  assert.deepEqual(state.requests.find((item) => item.method === "PATCH").body.settings, {fan_power: 104});
+});
+
+test("imported custom mode stays selected and is preserved on other edits", async () => {
+  state.schedules.devices[0].schedules[0].settings.fan_power = 987;
+  await ready();
+  const card = await openSchedule();
+  assert.equal(await card.getByLabel("Suction", {exact: true}).inputValue(), "987");
+  await card.getByLabel("Water level", {exact: true}).selectOption("203");
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.getByText("Schedule saved.", {exact: true}).waitFor();
+  assert.deepEqual(state.requests.find((item) => item.method === "PATCH").body.settings, {water_box_mode: 203});
+  assert.equal(state.schedules.devices[0].schedules[0].settings.fan_power, 987);
+});
+
+test("repeat presets cover once, every day, weekdays, weekends and custom days", async () => {
+  await ready();
+  const presets = [
+    ["once", "5 8 * * *", false], ["everyday", "5 8 * * *", true],
+    ["weekdays", "5 8 * * 1,2,3,4,5", true], ["weekends", "5 8 * * 0,6", true],
+  ];
+  for (const [preset, cron, repeated] of presets) {
+    const card = await openSchedule();
+    await card.getByLabel("Start time", {exact: true}).fill("08:05");
+    await card.getByLabel("Repeat", {exact: true}).selectOption(preset);
+    await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+    await card.getByText("Schedule saved.", {exact: true}).waitFor();
+    assert.equal(await card.locator("dialog").isVisible(), false);
+    assert.equal(state.schedules.devices[0].schedules[0].cron, cron);
+    assert.equal(state.schedules.devices[0].schedules[0].repeated, repeated);
+  }
+  const card = await openSchedule();
+  await card.getByLabel("Repeat", {exact: true}).selectOption("custom");
+  await card.getByLabel("Sat", {exact: true}).uncheck();
+  await card.getByLabel("Sun", {exact: true}).uncheck();
+  await card.getByLabel("Mon", {exact: true}).check();
+  await card.getByLabel("Thu", {exact: true}).check();
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.getByText("Schedule saved.", {exact: true}).waitFor();
+  assert.equal(state.schedules.devices[0].schedules[0].cron, "5 8 * * 1,4");
+});
+
+test("cleaning mode choices translate to vacuum, mop, combined and per-room preferences", async () => {
+  await ready();
+  for (const [mode, fan, water, route] of [["vacuum", 102, 200, 300], ["mop", 105, 202, 300], ["custom", 106, 204, 302], ["vac_mop", 102, 202, 300]]) {
+    const card = await openSchedule();
+    await card.getByLabel("Cleaning mode", {exact: true}).selectOption(mode);
+    if (mode === "custom") {
+      assert.equal(await card.getByLabel("Suction", {exact: true}).isVisible(), false);
+      assert.equal(await card.getByText("Uses the cleaning preferences saved for each room on the vacuum.", {exact: true}).isVisible(), true);
+    }
+    await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+    await card.getByText("Schedule saved.", {exact: true}).waitFor();
+    const settings = state.schedules.devices[0].schedules[0].settings;
+    assert.deepEqual([settings.fan_power, settings.water_box_mode, settings.mop_mode], [fan, water, route]);
+  }
+});
+
+test("full cleaning can target another named map without reusing room IDs", async () => {
+  await ready();
+  const card = await openSchedule();
+  await card.getByLabel("Map", {exact: true}).selectOption({label: "Upstairs"});
+  assert.equal(await card.getByLabel("Rooms", {exact: true}).isDisabled(), true);
+  await card.getByLabel("Full", {exact: true}).check();
+  await card.getByRole("button", {name: "Save schedule", exact: true}).click();
+  await card.getByText("Schedule saved.", {exact: true}).waitFor();
+  assert.deepEqual(state.requests.find((item) => item.method === "PATCH").body.settings, {map_index: 1, segments: "0"});
+  assert.equal(await card.locator('[data-field="taskSummary"]').textContent(), "Upstairs · Full");
+});
+
+test("compact list and editor fit mobile and expose keyboard focus without script errors", async () => {
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.setViewportSize({width: 390, height: 844});
+  await ready();
+  await page.locator("#schedules").scrollIntoViewIfNeeded();
+  await page.locator("#scheduleList").screenshot({path: path.join(outputDir, "schedule-list-mobile.png")});
+  const card = await openSchedule();
+  await card.getByLabel("Kitchen", {exact: true}).waitFor();
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({width, height: 844});
+    await noOverflow();
+    assert.equal(await card.locator("dialog").evaluate((dialog) => dialog.scrollWidth > dialog.clientWidth), false);
+  }
+  await page.setViewportSize({width: 390, height: 844});
+  await card.locator("dialog").screenshot({path: path.join(outputDir, "schedule-dialog-mobile.png")});
+  await card.getByLabel("Start time", {exact: true}).fill("08:05");
+  await page.keyboard.press("Escape");
+  assert.equal(await card.locator("dialog").isVisible(), false);
+  await openSchedule();
+  assert.equal(await card.getByLabel("Start time", {exact: true}).inputValue(), "08:05");
+  assert.deepEqual(errors, []);
 });

@@ -8,6 +8,7 @@
   const credentialCards = new Map();
   let vacuumRevision = 0;
   const scheduleCards = new Map();
+  const scheduleRooms = new Map();
   let scheduleDevices = [];
   let scheduleLoaded = false;
   let schedulePromise = null;
@@ -55,6 +56,7 @@
       if (!response.ok) {
         const error = new Error(payload.error || payload.detail || `Request failed (HTTP ${response.status}).`);
         error.status = response.status;
+        error.code = payload.code;
         throw error;
       }
       return payload;
@@ -271,6 +273,172 @@
     element.hidden = !value;
   }
 
+  const cleaningKeys = ["fan_power", "water_box_mode", "mop_mode", "repeat"];
+  const repeatDays = {everyday: [0, 1, 2, 3, 4, 5, 6], weekdays: [1, 2, 3, 4, 5], weekends: [0, 6], once: [0, 1, 2, 3, 4, 5, 6]};
+
+  function repeatPreset(job, simple) {
+    if (!simple) return "cron";
+    if (job.repeated === false) return "once";
+    for (const key of ["everyday", "weekdays", "weekends"]) if (JSON.stringify(simple.days) === JSON.stringify(repeatDays[key])) return key;
+    return "custom";
+  }
+
+  function cleaningMode(settings) {
+    const fan = Number(settings.fan_power), water = Number(settings.water_box_mode), mop = Number(settings.mop_mode);
+    if (fan === 106 || water === 204 || mop === 302) return "custom";
+    if (fan === 105 && water > 200) return "mop";
+    if ([101, 102, 103, 104, 108, 109].includes(fan)) {
+      if (water === 200) return "vacuum";
+      if ([201, 202, 203, 225, 235, 245].includes(water)) return "vac_mop";
+    }
+    return "keep";
+  }
+
+  const cleaningModeNames = {vacuum: "Vacuum", vac_mop: "Vac & mop", mop: "Mop", custom: "Custom", keep: "Saved mode"};
+
+  function chooseCleaningMode(state, mode) {
+    const fields = state.form.elements;
+    const set = (key, value) => { fields[key].value = String(value); };
+    if (mode === "custom") {
+      set("fan_power", 106); set("water_box_mode", 204); set("mop_mode", 302);
+    } else if (mode !== "keep") {
+      const fan = Number(fields.fan_power.value), water = Number(fields.water_box_mode.value);
+      if (mode === "mop") set("fan_power", 105);
+      else if (![101, 102, 103, 104, 108, 109].includes(fan)) set("fan_power", 102);
+      if (mode === "vacuum") set("water_box_mode", 200);
+      else if (![201, 202, 203, 225, 235, 245].includes(water)) set("water_box_mode", 202);
+      if (!fields.mop_mode.value || [302, 306].includes(Number(fields.mop_mode.value))) set("mop_mode", 300);
+    }
+  }
+
+  function savedRoomSelection(settings) {
+    const raw = settings.segments ?? "0";
+    const parts = Array.isArray(raw) ? raw : String(raw).split(/[,;]/).map((item) => item.trim());
+    const valid = parts.length && parts.every((item) => /^\d+$/.test(String(item)) && Number(item) <= 255);
+    const ids = valid ? parts.map(Number) : [];
+    return {map: settings.map_index === -1 ? "" : String(settings.map_index ?? ""), area: valid && ids.length === 1 && ids[0] === 0 ? "whole"
+      : valid && ids.every((id) => id > 0) ? "rooms" : "keep", ids: ids.filter((id) => id > 0)};
+  }
+
+  function roomEdits(state) {
+    return state.savedValues && JSON.stringify(state.roomDraft) !== JSON.stringify(JSON.parse(state.savedValues).rooms);
+  }
+
+  function addOption(select, value, label, disabled = false) {
+    const option = document.createElement("option");
+    option.value = String(value);
+    option.textContent = label;
+    option.disabled = disabled;
+    select.append(option);
+  }
+
+  function populateCleaning(state, job) {
+    for (const key of cleaningKeys) {
+      const select = state.form.elements[key];
+      select.replaceChildren();
+      addOption(select, "", Object.hasOwn(job.settings || {}, key) ? "Keep saved setting" : "Use vacuum setting");
+      for (const option of job.setting_choices?.[key] || []) addOption(select, option.value, option.label);
+      const current = job.settings?.[key];
+      if (Number.isInteger(current) && ![...select.options].some((option) => option.value === String(current))) {
+        addOption(select, current, `Saved custom option (${current})`);
+      }
+      select.value = Number.isInteger(current) ? String(current) : "";
+      // The blank option means retain an imported/missing value, not erase it.
+      select.options[0].disabled = Number.isInteger(current);
+    }
+    const list = scheduleField(state, "extraList");
+    list.replaceChildren();
+    for (const [key, label] of [["clean_order_mode", "Cleaning order"], ["clean_mop", "Mop preparation"], ["mop_template_id", "Mop template"]]) {
+      if (!Object.hasOwn(job.settings || {}, key)) continue;
+      const row = document.createElement("div"), term = document.createElement("dt"), value = document.createElement("dd");
+      term.textContent = label;
+      const saved = job.settings[key];
+      value.textContent = typeof saved === "number" || typeof saved === "string" ? `Saved ${key === "mop_template_id" ? "template" : "option"} ${saved}` : "Saved custom setting";
+      row.append(term, value);
+      list.append(row);
+    }
+    scheduleField(state, "extraOptions").hidden = !list.children.length;
+    text(scheduleField(state, "cleaningHelp"), job.settings_editable
+      ? "Choose your cleaning preferences, then Save schedule. Options supported by your model may vary. Saved custom settings are kept."
+      : "Cleaning settings for this schedule format are shown for reference. Edit them in LocalRock.");
+  }
+
+  function renderRoomControls(state) {
+    const cached = scheduleRooms.get(state.deviceId), catalog = cached?.catalog;
+    const draft = state.roomDraft, form = state.form;
+    form.elements.map.replaceChildren();
+    const maps = catalog?.maps || [];
+    if (!maps.some((map) => String(map.id) === draft.map)) {
+      addOption(form.elements.map, draft.map, draft.map === "" ? "Use loaded map" : `Saved map ${Number(draft.map) + 1}`);
+    }
+    for (const map of maps) {
+      const loaded = map.id === catalog.map_index;
+      addOption(form.elements.map, map.id, map.name + (loaded ? " (loaded)" : ""));
+    }
+    form.elements.map.value = draft.map;
+    form.elements.area.value = draft.area;
+    scheduleField(state, "keepArea").hidden = draft.area !== "keep";
+    const matches = catalog && (draft.map === "" || Number(draft.map) === catalog.map_index);
+    const list = scheduleField(state, "roomList");
+    list.replaceChildren();
+    const rooms = matches ? [...catalog.rooms] : [];
+    for (const id of draft.ids) {
+      if (!rooms.some((room) => room.id === id)) rooms.push({id, name: `Room ${id} (saved; unavailable on loaded map)`, unavailable: true});
+    }
+    for (const room of rooms) {
+      const label = document.createElement("label"), input = document.createElement("input"), name = document.createElement("span");
+      label.className = "room-choice";
+      input.type = "checkbox";
+      input.name = "room";
+      input.value = String(room.id);
+      input.checked = draft.ids.includes(room.id);
+      // A removed room can be unchecked, but cannot be newly selected.
+      input.disabled = room.unavailable && !input.checked;
+      name.textContent = room.name;
+      label.append(input, name);
+      list.append(label);
+    }
+    if (!rooms.length) text(list, catalog && matches ? "No named rooms reported on this map." : "Refresh rooms to load the room names.");
+    text(scheduleField(state, "mapHelp"), matches || draft.area === "whole" ? ""
+      : "To choose rooms on this map, load it in LocalRock and Refresh rooms. Full cleans the entire selected map.");
+    text(scheduleField(state, "roomStatus"), cached?.busy ? "Reading map and room names from the vacuum…"
+      : cached?.error || (catalog ? "Map and rooms loaded from the vacuum." : "Connect this vacuum to load its map and room names."));
+    state.form.querySelector(".schedule-rooms").hidden = draft.area !== "rooms";
+  }
+
+  async function refreshRooms(duid) {
+    const cached = scheduleRooms.get(duid) || {};
+    if (cached.busy) return;
+    cached.busy = true;
+    cached.attempted = true;
+    cached.error = "";
+    scheduleRooms.set(duid, cached);
+    const update = () => {
+      for (const state of scheduleCards.values()) if (state.deviceId === duid) {
+        renderRoomControls(state);
+        renderScheduleSummary(state, state.latest || state.base);
+        syncScheduleEditor(state);
+      }
+    };
+    update();
+    try {
+      const catalog = await fetchJson(`/admin/api/schedules/${encodeURIComponent(duid)}/rooms`, {}, 40000);
+      if (!Array.isArray(catalog.rooms) || !Array.isArray(catalog.maps) || !catalog.revision || !Number.isInteger(catalog.map_index)) {
+        throw new Error("The room response was incomplete. Try Refresh rooms again.");
+      }
+      cached.catalog = catalog;
+      for (const state of scheduleCards.values()) if (state.deviceId === duid) {
+        if (roomEdits(state) && state.roomRevision !== catalog.revision) state.roomNeedsReview = true;
+        else if (!roomEdits(state)) { state.roomRevision = catalog.revision; state.roomNeedsReview = false; }
+      }
+    } catch (error) {
+      cached.error = error.message;
+    } finally {
+      cached.busy = false;
+      update();
+    }
+  }
+
   function scheduleValues(state) {
     const form = state.form;
     return {
@@ -279,26 +447,48 @@
       days: [...form.querySelectorAll('input[name="day"]:checked')].map((input) => Number(input.value)).sort(),
       cron: form.elements.cron.value.trim(),
       zone: form.elements.zone.value.trim(),
-      enabled: form.elements.enabled.checked,
+      cleaning: Object.fromEntries(cleaningKeys.map((key) => [key, form.elements[key].value])),
+      rooms: state.roomDraft,
     };
   }
 
   function syncScheduleEditor(state) {
     const values = scheduleValues(state);
-    const relevant = (value) => value.mode === "simple"
-      ? {mode: value.mode, time: value.time, days: value.days, zone: value.zone, enabled: value.enabled}
-      : {mode: value.mode, cron: value.cron, zone: value.zone, enabled: value.enabled};
+    const relevant = (value) => value.mode !== "cron"
+      ? {mode: value.mode, time: value.time, days: value.mode === "custom" ? value.days : [], zone: value.zone, cleaning: value.cleaning, rooms: value.rooms}
+      : {mode: value.mode, cron: value.cron, zone: value.zone, cleaning: value.cleaning, rooms: value.rooms};
     state.dirty = JSON.stringify(relevant(values)) !== JSON.stringify(relevant(JSON.parse(state.savedValues)));
     const stale = state.forcedConflict || (state.dirty && state.latest?.revision !== state.base?.revision);
     const editable = state.base?.editable === true && !state.deleted;
     state.form.querySelector(".schedule-fields").disabled = state.busy || !editable;
-    scheduleField(state, "timeField").hidden = values.mode !== "simple";
-    scheduleField(state, "daysField").hidden = values.mode !== "simple";
+    scheduleField(state, "closeEditor").disabled = state.busy;
+    state.card.querySelector('input[name="enabled"]').disabled = state.busy || !editable || stale;
+    const cached = scheduleRooms.get(state.deviceId), catalog = cached?.catalog;
+    state.form.querySelector(".cleaning-fields").disabled = !state.base?.settings_editable;
+    state.form.elements.map.disabled = !catalog || cached.busy;
+    const matches = catalog && (state.roomDraft.map === "" || Number(state.roomDraft.map) === catalog.map_index);
+    state.form.querySelector(".schedule-area").disabled = !catalog || cached?.busy === true;
+    state.form.querySelector('input[name="area"][value="rooms"]').disabled = !matches;
+    state.form.querySelector(".schedule-rooms").disabled = !matches || cached.busy;
+    scheduleField(state, "refreshRooms").disabled = state.busy || cached?.busy === true;
+    scheduleField(state, "roomReview").hidden = !state.roomNeedsReview;
+    scheduleField(state, "confirmRooms").hidden = !state.roomNeedsReview;
+    scheduleField(state, "confirmRooms").disabled = (!matches && state.roomDraft.area !== "whole") || cached?.busy === true;
+    scheduleField(state, "timeField").hidden = values.mode === "cron";
+    scheduleField(state, "daysField").hidden = values.mode !== "custom";
+    scheduleField(state, "onceHelp").hidden = values.mode !== "once";
     scheduleField(state, "cronField").hidden = values.mode !== "cron";
-    state.form.elements.time.required = values.mode === "simple";
+    state.form.elements.time.required = values.mode !== "cron";
     state.form.elements.cron.required = values.mode === "cron";
+    const cleanMode = cleaningMode(values.cleaning);
+    state.form.elements.cleaning_mode.value = cleanMode;
+    scheduleField(state, "customHelp").hidden = cleanMode !== "custom";
+    scheduleField(state, "suctionField").hidden = ["custom", "mop"].includes(cleanMode);
+    scheduleField(state, "waterField").hidden = ["custom", "vacuum"].includes(cleanMode);
+    scheduleField(state, "mopField").hidden = ["custom", "vacuum"].includes(cleanMode);
+    text(scheduleField(state, "selectionCount"), state.roomDraft.area === "whole" ? "Entire map" : `${state.roomDraft.ids.length} room${state.roomDraft.ids.length === 1 ? "" : "s"} selected`);
     const save = scheduleField(state, "save");
-    save.disabled = !editable || !state.dirty || state.busy || stale;
+    save.disabled = !editable || !state.dirty || state.busy || stale || (roomEdits(state) && (state.roomNeedsReview || cached?.busy === true));
     text(save, state.busy ? "Saving…" : "Save schedule");
     scheduleField(state, "discard").disabled = state.busy || !(state.dirty || stale || state.deleted);
     text(scheduleField(state, "editStatus"), state.busy ? "Saving…" : state.deleted ? "Deleted elsewhere"
@@ -313,11 +503,16 @@
     state.forcedConflict = false;
     const simple = simpleRecurrence(job.cron);
     const form = state.form;
-    form.elements.mode.value = simple ? "simple" : "cron";
+    form.elements.mode.value = repeatPreset(job, simple);
     form.elements.time.value = simple?.time || "09:00";
     form.elements.zone.value = job.timeZoneId || "";
     form.elements.cron.value = job.cron || "";
-    form.elements.enabled.checked = job.enabled === true;
+    state.card.querySelector('input[name="enabled"]').checked = job.enabled === true;
+    state.roomDraft = savedRoomSelection(job.settings || {});
+    state.roomRevision = scheduleRooms.get(state.deviceId)?.catalog?.revision;
+    state.roomNeedsReview = false;
+    populateCleaning(state, job);
+    renderRoomControls(state);
     form.querySelectorAll('input[name="day"]').forEach((input) => {
       input.checked = (simple?.days || [1, 2, 3, 4, 5]).includes(Number(input.value));
     });
@@ -329,27 +524,50 @@
     const values = scheduleValues(state), original = JSON.parse(state.savedValues);
     const patch = {revision: state.base.revision};
     if (values.zone !== original.zone) patch.timeZoneId = values.zone;
-    if (values.enabled !== original.enabled) patch.enabled = values.enabled;
+    const settings = {};
+    for (const key of cleaningKeys) if (values.cleaning[key] !== original.cleaning[key] && values.cleaning[key] !== "") settings[key] = Number(values.cleaning[key]);
+    if (roomEdits(state)) {
+      const catalog = scheduleRooms.get(state.deviceId)?.catalog;
+      if (!catalog || state.roomNeedsReview) throw new Error("Refresh rooms and review your selection before saving.");
+      if (values.rooms.area === "keep") throw new Error("Choose whole home or selected rooms.");
+      if (values.rooms.area === "rooms" && !values.rooms.ids.length) throw new Error("Choose at least one room or select Whole home.");
+      if (values.rooms.area === "rooms" && values.rooms.ids.some((id) => !catalog.rooms.some((room) => room.id === id))) throw new Error("Remove unavailable rooms before saving.");
+      settings.map_index = values.rooms.map === "" ? catalog.map_index : Number(values.rooms.map);
+      settings.segments = values.rooms.area === "whole" ? "0" : values.rooms.ids.join(",");
+      patch.room_revision = state.roomRevision;
+    }
+    if (Object.keys(settings).length) patch.settings = settings;
+    if (values.mode !== "cron" && (values.mode !== "once") !== state.base.repeated) patch.repeated = values.mode !== "once";
     if (values.mode !== original.mode || (values.mode === "cron" && values.cron !== original.cron)
-        || (values.mode === "simple" && (values.time !== original.time || JSON.stringify(values.days) !== JSON.stringify(original.days)))) {
+        || (values.mode !== "cron" && (values.time !== original.time || (values.mode === "custom" && JSON.stringify(values.days) !== JSON.stringify(original.days))))) {
       if (values.mode === "cron") patch.cron = values.cron;
       else {
-        if (!values.days.length) throw new Error("Choose at least one day for this recurring schedule.");
+        const days = repeatDays[values.mode] || values.days;
+        if (!days.length) throw new Error("Choose at least one day for this recurring schedule.");
         if (!/^\d{2}:\d{2}$/.test(values.time)) throw new Error("Choose a valid time.");
         const [hour, minute] = values.time.split(":").map(Number);
-        patch.cron = `${minute} ${hour} * * ${values.days.length === 7 ? "*" : values.days.join(",")}`;
+        patch.cron = `${minute} ${hour} * * ${days.length === 7 ? "*" : days.join(",")}`;
       }
     }
     return patch;
   }
 
   function renderScheduleSummary(state, job) {
-    text(scheduleField(state, "title"), `Schedule ${job.id}`);
     const simple = simpleRecurrence(job.cron);
-    const days = simple?.days.length === 7 ? "Every day" : [1, 2, 3, 4, 5, 6, 0]
+    const preset = repeatPreset(job, simple);
+    const days = {once: "Once", everyday: "Every day", weekdays: "Weekdays", weekends: "Weekends"}[preset] || [1, 2, 3, 4, 5, 6, 0]
       .filter((day) => simple?.days.includes(day)).map((day) => scheduleDayNames[day]).join(", ");
-    text(scheduleField(state, "recurrence"), simple ? `${days} at ${simple.time} · ${job.timeZoneId}` : `${job.cron} · ${job.timeZoneId}`);
-    badge(scheduleField(state, "enabledBadge"), state.deleted ? "Deleted" : job.enabled ? "Server enabled" : "Server disabled", "neutral");
+    const clock = simple?.time || (/^\d+ \d+ /.test(job.cron) ? `${String(job.cron.split(" ")[1]).padStart(2, "0")}:${String(job.cron.split(" ")[0]).padStart(2, "0")}` : "Multiple times");
+    text(scheduleField(state, "title"), clock);
+    text(scheduleField(state, "recurrence"), job.repeated === false ? "Once" : days || "Advanced");
+    scheduleField(state, "openEditor").setAttribute("aria-label", `Edit schedule ${job.id}, ${clock}`);
+    const catalog = scheduleRooms.get(state.deviceId)?.catalog;
+    const selection = savedRoomSelection(job.settings || {});
+    const map = catalog?.maps.find((item) => String(item.id) === selection.map);
+    const mapName = map?.name || (selection.map === "" ? "Loaded map" : `Map ${Number(selection.map) + 1}`);
+    text(scheduleField(state, "taskSummary"), `${mapName} · ${selection.area === "whole" ? "Full" : selection.area === "rooms" ? `${selection.ids.length} rooms` : "Saved rooms"}`);
+    text(scheduleField(state, "modeSummary"), cleaningModeNames[cleaningMode(job.settings || {})]);
+    if (!state.busy) state.card.querySelector('input[name="enabled"]').checked = job.enabled === true;
     let next = job.enabled ? "Next scheduled time: not calculated" : "Disabled on this server";
     if (job.enabled && job.next_run_at) {
       try {
@@ -363,11 +581,8 @@
       ? "Robot timer: not checked. The robot's timer must also be enabled."
       : "This schedule uses the server's legacy timer compatibility mode.");
     text(scheduleField(state, "enabledHelp"), job.native_timer_name
-      ? "Checked: this server can trigger the schedule. Unchecked: this server will not trigger it. Save to apply. This does not turn the robot's own timer on or off."
-      : "Checked: this server can trigger the schedule. Unchecked: this server will not trigger it. Save to apply.");
-    scheduleField(state, "readOnly").hidden = job.editable === true;
-    state.card.querySelector(".schedule-editor").hidden = job.editable !== true && !state.dirty && !state.forcedConflict;
-    text(scheduleField(state, "settings"), JSON.stringify({native_timer_name: job.native_timer_name ?? null, ...job.settings}, null, 2));
+      ? "Enable schedule saves immediately. Unchecked: this server will not run it. The robot’s own timer is managed separately."
+      : "Enable schedule saves immediately. Unchecked: this server will not run it.");
   }
 
   function createScheduleCard(device, job, key) {
@@ -375,11 +590,82 @@
     card.dataset.jobId = String(job.id);
     card.dataset.deviceId = String(device.duid);
     const state = {card, form: card.querySelector("form"), deviceId: String(device.duid), busy: false, dirty: false};
+    state.dialog = card.querySelector("dialog");
     state.form.setAttribute("aria-label", `Edit schedule ${job.id} for ${device.name || "vacuum"}`);
     adoptSchedule(state, job);
-    const onInput = () => { scheduleMessage(state); syncScheduleEditor(state); };
+    scheduleField(state, "openEditor").addEventListener("click", () => {
+      state.dialog.showModal();
+      state.dialog.scrollTop = 0;
+    });
+    scheduleField(state, "closeEditor").addEventListener("click", () => state.dialog.close());
+    state.dialog.addEventListener("cancel", (event) => { if (state.busy) event.preventDefault(); });
+    const onInput = (event) => {
+      const input = event.target, draft = state.roomDraft;
+      if (input.name === "cleaning_mode") {
+        chooseCleaningMode(state, input.value);
+      } else if (input.name === "mode" && repeatDays[input.value]) {
+        state.form.querySelectorAll('input[name="day"]').forEach((day) => { day.checked = repeatDays[input.value].includes(Number(day.value)); });
+      } else if (input.name === "map" && input.value !== draft.map) {
+        draft.map = input.value;
+        draft.ids = [];
+        if (draft.area === "keep") draft.area = "rooms";
+        renderRoomControls(state);
+      } else if (input.name === "area") {
+        draft.area = input.value;
+        renderRoomControls(state);
+      } else if (input.name === "room") {
+        const id = Number(input.value);
+        draft.ids = input.checked ? [...new Set([...draft.ids, id])] : draft.ids.filter((item) => item !== id);
+      }
+      if (["map", "area", "room"].includes(input.name) && !state.roomNeedsReview) {
+        state.roomRevision = scheduleRooms.get(state.deviceId)?.catalog?.revision;
+      }
+      scheduleMessage(state);
+      scheduleField(state, "savedResult").hidden = true;
+      syncScheduleEditor(state);
+    };
     state.form.addEventListener("input", onInput);
     state.form.addEventListener("change", onInput);
+    scheduleField(state, "refreshRooms").addEventListener("click", () => refreshRooms(state.deviceId));
+    scheduleField(state, "confirmRooms").addEventListener("click", () => {
+      state.roomRevision = scheduleRooms.get(state.deviceId)?.catalog?.revision;
+      state.roomNeedsReview = false;
+      scheduleMessage(state, "Room selection reviewed. Save schedule to apply it.");
+      syncScheduleEditor(state);
+    });
+    const toggle = card.querySelector('input[name="enabled"]');
+    toggle.addEventListener("change", async () => {
+      if (state.busy) return;
+      state.busy = true;
+      scheduleRevision += 1;
+      syncScheduleEditor(state);
+      const result = scheduleField(state, "toggleResult");
+      result.hidden = false;
+      result.className = "message";
+      text(result, "Saving schedule enablement…");
+      try {
+        const payload = await fetchJson(`/admin/api/schedules/${encodeURIComponent(state.deviceId)}/${encodeURIComponent(state.base.id)}`, {
+          method: "PATCH", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({revision: state.base.revision, enabled: toggle.checked}),
+        });
+        if (!payload.schedule?.revision) throw new Error("The save response was incomplete. Refresh schedules to check the saved state.");
+        // Only enablement changed: retain unsaved time and cleaning controls.
+        state.base = payload.schedule;
+        state.latest = payload.schedule;
+        renderScheduleSummary(state, payload.schedule);
+        text(result, payload.schedule.enabled ? "Schedule enabled on this server." : "Schedule disabled on this server.");
+        result.className = "message success";
+      } catch (error) {
+        if (error.status === 409) state.forcedConflict = true;
+        text(result, error.message);
+        result.className = "message error";
+      } finally {
+        toggle.checked = state.base.enabled === true;
+        state.busy = false;
+        scheduleRevision += 1;
+        syncScheduleEditor(state);
+      }
+    });
     scheduleField(state, "discard").addEventListener("click", async () => {
       if (state.busy) return;
       state.busy = true;
@@ -422,13 +708,19 @@
       try {
         const payload = await fetchJson(`/admin/api/schedules/${encodeURIComponent(state.deviceId)}/${encodeURIComponent(state.base.id)}`, {
           method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify(patch),
-        });
+        }, 40000);
         if (!payload.schedule?.revision) throw new Error("The save response was incomplete. Refresh schedules before trying again.");
         adoptSchedule(state, payload.schedule);
         renderScheduleSummary(state, payload.schedule);
-        scheduleMessage(state, "Schedule saved. Room and cleaning settings were preserved.", "success");
+        scheduleMessage(state);
+        const savedResult = scheduleField(state, "savedResult");
+        text(savedResult, "Schedule saved.");
+        savedResult.hidden = false;
+        savedResult.className = "message success";
+        state.dialog.close();
       } catch (error) {
-        if (error.status === 409) state.forcedConflict = true;
+        if (error.code === "room_catalog_changed") state.roomNeedsReview = true;
+        else if (error.status === 409) state.forcedConflict = true;
         scheduleMessage(state, error.message, "error");
       } finally {
         state.busy = false;
@@ -462,6 +754,7 @@
     const count = device?.schedules?.length || 0;
     text($("scheduleSummary"), device ? `${count} stored schedule${count === 1 ? "" : "s"} · `
       + (device.connected === true ? "Connected locally" : device.connected === false ? "Not connected to this server; edits affect local data only" : "Connection not reported") : "No stored vacuums");
+    if (device?.connected && device.schedules?.some((job) => job.settings_editable) && !scheduleRooms.get(duid)?.attempted) refreshRooms(duid);
   }
 
   function renderSchedules(payload) {

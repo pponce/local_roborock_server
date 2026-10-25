@@ -1,7 +1,7 @@
 """Authenticated dashboard adapter for the existing schedule store.
 
-This layer edits recurring job timing and the server dispatch gate only. Native
-timer settings remain owned by the robot; no robot command is sent by these routes.
+This layer edits the recurring job and its cleaning payload. Room selection is
+validated against fresh, read-only queries of the vacuum's loaded map.
 """
 
 from __future__ import annotations
@@ -21,12 +21,17 @@ from shared.data_helpers import as_bool
 from shared.schedule_runner import next_fire_time_utc, parse_cron
 from shared.schedule_store import upsert_job
 
+from .admin_schedule_settings import (
+    RoomCatalogError, merge_settings, read_room_catalog, schedule_param,
+    setting_choices, validate_rooms,
+)
+
 
 _SETTING_KEYS = (
     "map_index", "segments", "fan_power", "water_box_mode", "mop_mode",
     "mop_template_id", "clean_order_mode", "repeat", "clean_mop",
 )
-_EDIT_FIELDS = frozenset({"cron", "timeZoneId", "enabled"})
+_EDIT_FIELDS = frozenset({"cron", "timeZoneId", "enabled", "repeated", "settings"})
 
 
 def _response(payload: dict[str, Any], status: int = 200) -> JSONResponse:
@@ -81,7 +86,9 @@ def _schedule(job: dict[str, Any], default_zone: str, now: datetime) -> dict[str
         "native_timer_name": native if isinstance(native, str) else None,
         "native_timer_state": "not_checked" if "name" in settings else None,
         "settings": {key: settings[key] for key in _SETTING_KEYS if key in settings},
-        "editable": recurring and isinstance(job.get("id"), (int, str)) and not isinstance(job.get("id"), bool),
+        "setting_choices": setting_choices(settings),
+        "settings_editable": schedule_param(job) is not None,
+        "editable": isinstance(job.get("id"), (int, str)) and not isinstance(job.get("id"), bool),
     }
 
 
@@ -120,11 +127,11 @@ def _list_payload(supervisor: Any) -> dict[str, Any]:
     }
 
 
-def _update(supervisor: Any, duid: str, job_id: str, body: Any) -> JSONResponse:
+async def _update(supervisor: Any, duid: str, job_id: str, body: Any) -> JSONResponse:
     if not isinstance(body, dict):
         return _response({"error": "JSON body must be an object"}, 400)
-    if set(body) - (_EDIT_FIELDS | {"revision"}):
-        return _response({"error": "Only time, timezone and server enablement can be edited here"}, 400)
+    if set(body) - (_EDIT_FIELDS | {"revision", "room_revision"}):
+        return _response({"error": "Only schedule time, enablement, rooms and cleaning options can be edited here"}, 400)
     if not isinstance(body.get("revision"), str) or not (set(body) & _EDIT_FIELDS):
         return _response({"error": "A revision and at least one edited field are required"}, 400)
     try:
@@ -141,15 +148,16 @@ def _update(supervisor: Any, duid: str, job_id: str, body: Any) -> JSONResponse:
     existing = matches[0]
     if body["revision"] != _revision(existing):
         return _response({"error": "This schedule changed. Reload it before saving again."}, 409)
-    if not as_bool(existing.get("repeated", True), True):
-        return _response({"error": "One-time schedules are read-only in this editor"}, 409)
     cron = body.get("cron", existing.get("cron"))
     enabled = body.get("enabled", as_bool(existing.get("enabled", True), True))
+    repeated = body.get("repeated", as_bool(existing.get("repeated", True), True))
     zone = body.get("timeZoneId", "")
     if not isinstance(cron, str) or not cron.strip() or len(cron) > 200:
         return _response({"error": "A valid five-field schedule expression is required"}, 400)
     if type(enabled) is not bool:
         return _response({"error": "Server enablement must be true or false"}, 400)
+    if type(repeated) is not bool:
+        return _response({"error": "Repeat must be true or false"}, 400)
     if "timeZoneId" in body and (not isinstance(zone, str) or not zone.strip() or len(zone) > 100):
         return _response({"error": "Enter a valid IANA timezone"}, 400)
     try:
@@ -159,10 +167,26 @@ def _update(supervisor: Any, duid: str, job_id: str, body: Any) -> JSONResponse:
             ZoneInfo(zone)
     except (ValueError, ZoneInfoNotFoundError):
         return _response({"error": "Check the schedule expression and IANA timezone"}, 400)
+    param = None
+    if "settings" in body:
+        try:
+            param, needs_rooms = merge_settings(existing, body["settings"])
+        except ValueError as exc:
+            return _response({"error": str(exc)}, 400)
+        if needs_rooms:
+            try:
+                catalog = await read_room_catalog(supervisor, duid)
+                validate_rooms(param, catalog, body.get("room_revision"))
+            except KeyError:
+                return _response({"error": "Vacuum not found"}, 404)
+            except RoomCatalogError as exc:
+                return _response({"error": str(exc), "code": "room_catalog_changed"}, 409)
     try:
         updated = upsert_job(
             supervisor.context, duid, job_id=existing["id"], cron=cron.strip(), enabled=enabled,
             time_zone=zone, override_time_zone="timeZoneId" in body, expected_job=existing,
+            param=param,
+            repeated=repeated if "repeated" in body else None,
         )
     except ValueError:
         return _response({"error": "This schedule changed. Reload it before saving again."}, 409)
@@ -173,6 +197,16 @@ def _update(supervisor: Any, duid: str, job_id: str, body: Any) -> JSONResponse:
 
 
 def register_schedule_routes(app: FastAPI, supervisor: Any) -> None:
+    @app.get("/admin/api/schedules/{duid}/rooms")
+    async def schedule_rooms(duid: str, request: Request) -> JSONResponse:
+        supervisor._require_admin(request)
+        try:
+            return _response(await read_room_catalog(supervisor, duid))
+        except KeyError:
+            return _response({"error": "Vacuum not found"}, 404)
+        except RoomCatalogError as exc:
+            return _response({"error": str(exc)}, 503)
+
     @app.get("/admin/api/schedules")
     async def schedules_list(request: Request) -> JSONResponse:
         supervisor._require_admin(request)
@@ -201,4 +235,4 @@ def register_schedule_routes(app: FastAPI, supervisor: Any) -> None:
             body = json.loads(raw)
         except (ValueError, UnicodeDecodeError):
             return _response({"error": "Invalid JSON body"}, 400)
-        return _update(supervisor, duid, job_id, body)
+        return await _update(supervisor, duid, job_id, body)

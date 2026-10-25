@@ -1,25 +1,51 @@
-# Dashboard schedule editor (first hardware-test version)
+# Dashboard schedule editor
 
 Open **Schedules** in the standalone `/admin` dashboard and choose a vacuum.
 The list includes imported native jobs, including jobs that a client's legacy
 `get_timer` screen does not show. No cloud re-import or new pairing is needed.
 
-The editor shows each stored job's time expression, timezone, next calculated
-run, server enablement, native timer reference, and map/room/cleaning settings.
+The compact list shows each job's start time, repeat pattern, map, Full/Rooms
+selection and cleaning mode. Select a row to open its editor. More settings
+contains the timezone, next calculated run and native timer information.
 Next-run times are displayed in the job's timezone. A next-run time describes
 when the server will evaluate a job; it is not confirmation that the robot can
 or will clean.
 
-## First-version scope
+## Using the editor
 
-- Edit an existing recurring job's time, weekdays, timezone, and server dispatch
-  permission. Advanced expressions can be retained or edited as five-field cron.
-- Preserve the job ID, native timer link, complete cleaning payload, unknown
-  model fields, recurrence flag, and occurrence claims.
+- **Enable schedule** is the switch at the right of each row. It saves
+  immediately, including when the editor is closed. It does not save
+  an unfinished time or cleaning draft.
+- Choose **Start time** and **Repeat**: Once, Every day, Weekdays, Weekends or
+  Custom days. Once targets the next selected start time; the existing scheduler
+  consumes it atomically and turns it off at its first trigger, even if the robot
+  cannot start. Advanced expressions can be retained or edited as five-field cron.
+- For native jobs, choose a map and **Full** or **Rooms** with named checkboxes.
+  Cleaning mode offers **Vacuum**, **Vac & mop**, **Mop** and **Custom**. Custom
+  uses the per-room cleaning preferences already stored on the vacuum (V1 codes
+  106/204/302); this editor does not rewrite those per-room preferences. Other
+  modes expose appropriate suction, water, route and pass controls. Use **Save schedule**
+  to apply these changes together. The initial room read is automatic for the
+  selected locally connected vacuum; **Refresh rooms** retries it explicitly.
+- Room names join the vacuum's live segment-to-cloud-room mapping with imported
+  home room names. Unknown names appear as **Room 16**, for example. Map names
+  come from the vacuum. Full can target any reported saved map. To select rooms
+  on another floor, load its saved map in LocalRock, then refresh rooms. The
+  editor itself never switches the robot's map.
+- Save rechecks the loaded map and room catalog. Changes to the map, room IDs
+  or names require refreshing and reviewing the selection. Other drafts remain.
+- **More settings** shows cleaning order, mop preparation and mop
+  template with readable labels. These model-specific values remain read-only;
+  the editor does not guess their meaning. Existing custom cleaning values are
+  retained and displayed, even when outside the common dropdown choices.
+- Preserve the job ID, native timer link, unedited cleaning settings, unknown
+  model fields, recurrence flag and occurrence claims.
 - Keep unsaved edits when the dashboard refreshes. Reject stale updates after
   another client changes or deletes a job; the user can discard and reload.
-- Show one-time jobs read-only. Creating/deleting jobs, changing cleaning
-  settings, and writing robot-native timers are outside this first editor.
+- One-time and repeating jobs can both be edited. Cleaning edits are limited to native jobs
+  whose complete payload reaches the vacuum; legacy/unknown formats display
+  saved settings read-only. Creating/deleting jobs and writing robot-native
+  timers are outside this editor.
 
 **Enable schedule** controls only the stored job's
 `enabled` flag. A native job also requires its robot-side timer to be on. This
@@ -53,12 +79,34 @@ earlier dashboard styling change. A test build may combine these features.
 
 `GET /admin/api/schedules` returns an allowlisted view grouped by vacuum.
 `PATCH /admin/api/schedules/{duid}/{job_id}` accepts `revision` and one or more of
-`cron`, `timeZoneId`, `enabled`. Both require the existing admin session. Writes
+`cron`, `timeZoneId`, `enabled`, `repeated`, `settings`. `settings` accepts only `map_index`,
+`segments`, `fan_power`, `water_box_mode`, `mop_mode`, `repeat`.
+`GET /admin/api/schedules/{duid}/rooms` reads map/room metadata through the local
+MQTT client. A room/map edit also requires its `room_revision`; the server reads
+the catalog again before accepting that edit. Other edits work without querying
+the vacuum. All endpoints require the existing admin session. Writes
 require JSON and reject cross-origin browser requests. The revision is checked
 again against the expected job under the schedule store's inventory lock.
 
 No new runtime dependency or database format is introduced. Python tests cover
 authentication, field privacy, preservation, stale/racing updates, validation,
-one-time jobs and persistence errors. Browser tests cover the native listing,
+one-time transitions and persistence errors. Browser tests cover the native listing,
 form persistence, conflict recovery, advanced expressions, mobile layout and
-text escaping. Hardware scheduled execution remains pending until observed.
+text escaping, header enablement, named rooms, cleaning choices and room changes
+during editing. Hardware scheduled execution remains pending until observed.
+
+## Updating an existing Compose installation
+
+After fetching, switching to the desired branch and fast-forwarding the local
+checkout, run `bash scripts/update-existing-compose.sh` from the repository.
+This builds the exact checked-out commit while the old container runs, then
+recreates only its Compose service and waits for Docker health. The helper reads
+project/service/config paths and the image tag from the existing container.
+It reuses mounts and environment files, including certificates and credentials;
+it does not make backups. A failed build does not restart the service.
+
+Defaults are container `roborock-local-server` and runtime directory
+`/opt/local_roborock_server`; override with `ROBOROCK_CONTAINER_NAME` and
+`ROBOROCK_RUNTIME_DIR`. The runtime `.env` is used when Compose has no recorded
+environment-file label. The helper stops on tracked checkout changes, missing
+Compose metadata or a configured image that differs from the running image.
