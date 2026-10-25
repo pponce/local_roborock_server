@@ -212,18 +212,21 @@ class ProtocolAuthStore:
         max_persisted_sessions: int = 8,
         hawk_clock_skew_seconds: int = 300,
         hawk_nonce_ttl_seconds: int = 600,
+        hawk_read_retry_seconds: float = 10.0,
     ) -> None:
         self.snapshot_path = Path(snapshot_path)
         self.session_store_path = Path(session_store_path) if session_store_path is not None else None
         self.max_persisted_sessions = max(1, int(max_persisted_sessions))
         self.hawk_clock_skew_seconds = hawk_clock_skew_seconds
         self.hawk_nonce_ttl_seconds = hawk_nonce_ttl_seconds
+        self.hawk_read_retry_seconds = max(0.0, float(hawk_read_retry_seconds))
         self._lock = threading.RLock()
         self._snapshot_mtime_ns: int | None = None
         self._session_store_mtime_ns: int | None = None
         self._persisted_session_records: tuple[dict[str, Any], ...] = ()
         self._availability = ProtocolAvailability(user=None, reason="missing_snapshot_or_user_data", users=())
-        self._nonces: dict[str, float] = {}
+        # Expiry, first receipt time, and HTTP method. Retries never extend the window.
+        self._nonces: dict[str, tuple[float, float, str]] = {}
 
     @staticmethod
     def _missing_user_fields(user_data: dict[str, Any]) -> list[str]:
@@ -548,6 +551,7 @@ class ProtocolAuthStore:
         self,
         *,
         path: str,
+        method: str = "",
         query_params: dict[str, list[str]],
         body_params: dict[str, list[str]],
         headers: Mapping[str, str],
@@ -576,7 +580,8 @@ class ProtocolAuthStore:
             timestamp = int(_clean_str(hawk.get("ts")))
         except ValueError:
             return False, "invalid_hawk_timestamp"
-        current_ts = int(time.time() if now_ts is None else now_ts)
+        received_at = float(time.time() if now_ts is None else now_ts)
+        current_ts = int(received_at)
         if abs(current_ts - timestamp) > self.hawk_clock_skew_seconds:
             return False, "stale_hawk_timestamp"
 
@@ -605,13 +610,32 @@ class ProtocolAuthStore:
         if not hmac.compare_digest(_clean_str(hawk.get("mac")), expected_mac):
             return False, "invalid_hawk_mac"
 
-        nonce_key = f"{user.hawk_id}:{user.hawk_session}:{timestamp}:{nonce}"
-        expires_at = float(current_ts + self.hawk_nonce_ttl_seconds)
+        # The OEM iOS app can reuse a short nonce for different signed requests.
+        # Include the verified MAC, which covers the path, query and body.
+        nonce_key = f"{user.hawk_id}:{user.hawk_session}:{timestamp}:{nonce}:{expected_mac}"
+        method = method.upper()
+        # Keep replay records until the signed timestamp is no longer acceptable,
+        # including its final valid second, even with a shorter configured TTL.
+        expires_at = max(
+            received_at + self.hawk_nonce_ttl_seconds,
+            float(timestamp + self.hawk_clock_skew_seconds + 1),
+        )
         with self._lock:
-            stale_keys = [key for key, value in self._nonces.items() if value <= current_ts]
+            stale_keys = [key for key, value in self._nonces.items() if value[0] <= received_at]
             for key in stale_keys:
                 self._nonces.pop(key, None)
-            if nonce_key in self._nonces:
+            previous = self._nonces.get(nonce_key)
+            if previous is not None:
+                _, first_seen, first_method = previous
+                # Do not re-run writes. The cloud-compatible MAC does not sign
+                # the HTTP method, so also reject reuse across different methods.
+                if (
+                    method in {"GET", "HEAD"}
+                    and method == first_method
+                    and self.hawk_read_retry_seconds > 0
+                    and 0 <= received_at - first_seen <= self.hawk_read_retry_seconds
+                ):
+                    return True, "ok"
                 return False, "replayed_hawk_nonce"
-            self._nonces[nonce_key] = expires_at
+            self._nonces[nonce_key] = (expires_at, received_at, method)
         return True, "ok"

@@ -47,6 +47,26 @@ The launcher now preflights that callback before starting `mitmweb`. If the `--l
 
 5. Once the MITM setup is working, open the Roborock app, log back in, enter your verification code, and the server should automatically show the vacuums already known to your local stack. Turn off WireGuard, disable the MITM certificate, and then open one of your devices to confirm the map loads.
 
+### OEM iOS login retries in this fork
+
+[Upstream issue #189](https://github.com/Python-roborock/local_roborock_server/issues/189)
+reports forced logouts when the iOS app reuses a Hawk nonce or immediately
+retries a signed request. This fork includes the verified request signature in
+the nonce cache key and allows identical `GET`/`HEAD` retries for ten seconds
+from their first receipt. Every request still needs a valid session, signature,
+and timestamp; retries do not extend that window.
+
+This is a conservative adaptation of the authentication change described in
+that issue. Identical writes, retries with a different HTTP method, and older
+replays remain rejected. It does not include the issue's scene-order or device
+color changes. It also does not recover a session the app has already cleared,
+or address every possible cause of a forced logout.
+
+Authentication failures now include their reason (for example
+`replayed_hawk_nonce` or `invalid_hawk_session`) in the server log and the
+`auth_reason` field of its HTTP JSONL log, without adding credentials to the
+message. A verification-code prompt alone does not establish its cause.
+
 ### Android
 
 > **Note:** It is recommended to disable auto update in the Roborock App.

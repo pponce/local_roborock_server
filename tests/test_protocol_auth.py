@@ -179,6 +179,52 @@ def test_token_auth_failures_use_roborock_invalid_credentials_code(tmp_path: Pat
     assert wrong_user.json()["data"]["reason"] == "invalid_header_username"
 
 
+def test_oem_duplicate_read_does_not_force_reauthentication(tmp_path: Path) -> None:
+    supervisor, paths = _build_supervisor(tmp_path)
+    client = TestClient(supervisor.app)
+    user = ProtocolAuthStore(paths.cloud_snapshot_path).availability().user
+    assert user is not None
+    headers = {"Authorization": build_hawk_authorization(
+        user=user, path="/user/scene/order", timestamp=int(time.time()), nonce="oem-read-retry",
+    )}
+    first = client.get("/user/scene/order", headers=headers)
+    retry = client.get("/user/scene/order", headers=headers)
+    assert first.status_code == retry.status_code == 200
+    assert first.json() == retry.json()
+
+
+def test_duplicate_write_is_not_dispatched_twice_and_logs_reason(tmp_path: Path, monkeypatch, caplog) -> None:
+    import logging
+    import roborock_local_server.server as server_module
+
+    supervisor, paths = _build_supervisor(tmp_path)
+    client = TestClient(supervisor.app)
+    user = ProtocolAuthStore(paths.cloud_snapshot_path).availability().user
+    assert user is not None
+    original = server_module.resolve_route
+    dispatched = []
+
+    def tracked_route(**kwargs):
+        dispatched.append(kwargs["clean_path"])
+        return original(**kwargs)
+
+    monkeypatch.setattr(server_module, "resolve_route", tracked_route)
+    headers = {"Authorization": build_hawk_authorization(
+        user=user, path="/user/scene/order", timestamp=int(time.time()), nonce="oem-write-retry",
+    )}
+    with caplog.at_level(logging.INFO, logger="real_stack.api"):
+        first = client.post("/user/scene/order", headers=headers)
+        retry = client.post("/user/scene/order", headers=headers)
+    assert first.status_code == 200
+    assert retry.status_code == 401
+    assert retry.json()["data"]["reason"] == "replayed_hawk_nonce"
+    assert dispatched == ["/user/scene/order"]
+    entries = [json.loads(line) for line in supervisor.context.http_jsonl.read_text().splitlines()]
+    assert entries[-1]["auth_reason"] == "replayed_hawk_nonce"
+    assert "reason=replayed_hawk_nonce" in caplog.text
+    assert headers["Authorization"] not in caplog.text
+
+
 def test_local_pin_login_succeeds_without_imported_cloud_snapshot(tmp_path: Path) -> None:
     supervisor, _paths = _build_supervisor(tmp_path, with_snapshot=False)
     client = TestClient(supervisor.app)

@@ -1236,6 +1236,7 @@ class ReleaseSupervisor:
             else:
                 authenticated, auth_reason = self.protocol_auth.verify_hawk(
                     path=self._normalized_path(clean_path),
+                    method=request.method,
                     query_params=query_params,
                     body_params=body_params,
                     headers=request.headers,
@@ -1247,6 +1248,7 @@ class ReleaseSupervisor:
                 if scene_validity.match(clean_path, request.method):
                     response_payload = scene_validity.error_response(unauthorized=True)
                 entry["route"] = route_name
+                entry["auth_reason"] = auth_reason
                 entry["response_json"] = response_payload
                 try:
                     self.runtime_state.record_http_event(
@@ -1265,12 +1267,13 @@ class ReleaseSupervisor:
                     logger.warning("runtime_state record_http_event failed: %s", exc)
                 append_jsonl(self.context.http_jsonl, entry)
                 logger.info(
-                    "%s %s host=%s route=%s status=%d body_sha256=%s",
+                    "%s %s host=%s route=%s status=%d reason=%s body_sha256=%s",
                     request.method,
                     clean_path,
                     host or "-",
                     route_name,
                     status_code,
+                    auth_reason,
                     body_sha256[:16],
                 )
                 return JSONResponse(response_payload, status_code=status_code)
