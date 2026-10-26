@@ -84,11 +84,6 @@ jobs:
         run: |
           set -o pipefail
           npm install --no-save --no-package-lock --fetch-retries=1 --fetch-timeout=60000 playwright@1.62.1 2>&1 | tee -a browser-setup.log
-      - name: Install Chromium system dependencies
-        timeout-minutes: 5
-        run: |
-          set -o pipefail
-          npx playwright install-deps chromium 2>&1 | tee -a browser-setup.log
       - name: Install Chromium
         timeout-minutes: 4
         env:
@@ -132,7 +127,6 @@ jobs:
           if-no-files-found: ignore
 
   docker:
-    needs: [python, browser]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
