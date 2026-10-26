@@ -148,4 +148,4 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Verify packaged dashboard and scheduler modules
         run: |
-          docker run --rm --network none local/roborock-server:admin-ci python -c 'from roborock_local_server.standalone_admin import _admin_dashboard_html; import roborock_local_server.admin_schedules; import roborock_local_server.bundled_backend.shared.schedule_runner; page = _admin_dashboard_html({}); assert "schedulePanel" in page and "activityList" in page'
+          docker run --rm --network none local/roborock-server:admin-ci python -c 'from roborock_local_server.server import ReleaseSupervisor; from roborock_local_server.standalone_admin import _admin_dashboard_html; import roborock_local_server.admin_schedules; import roborock_local_server.bundled_backend.shared.schedule_runner; page = _admin_dashboard_html({}); assert "schedulePanel" in page and "activityList" in page'
