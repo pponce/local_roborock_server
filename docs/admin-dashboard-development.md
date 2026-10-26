@@ -30,8 +30,8 @@ node --test tests/browser/admin-ui.test.cjs
 ```
 
 The renderer produces the actual dashboard/login HTML and shared stylesheet. It
-also downloads the Materialize stylesheet and icon font referenced by the shared
-theme. Browser tests then use those local fixtures and fictional API responses;
+also downloads the Materialize stylesheet, script and icon font referenced by the
+shared theme. Browser tests then use those local fixtures and fictional API responses;
 they do not connect to robots or cloud APIs. Preview images are written under
 `tests/browser/artifacts/`, which is ignored by Git.
 

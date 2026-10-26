@@ -221,6 +221,9 @@ beforeEach(async () => {
     if (url.href === "https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css") {
       return route.fulfill({path: path.join(fixtureDir, "materialize.min.css"), contentType: "text/css"});
     }
+    if (url.href === "https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js") {
+      return route.fulfill({path: path.join(fixtureDir, "materialize.min.js"), contentType: "text/javascript"});
+    }
     if (url.hostname === "fonts.googleapis.com" && url.pathname === "/icon") {
       return route.fulfill({body: '@font-face{font-family:"Material Icons";src:url(' + baseURL + '/test-icons.woff2)}.material-icons{font-family:"Material Icons";font-weight:normal;font-style:normal;font-size:24px;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;word-wrap:normal;direction:ltr;font-feature-settings:"liga"}', contentType: "text/css"});
     }
@@ -238,6 +241,7 @@ async function ready() {
   await page.waitForFunction(() => document.getElementById("scheduleList")?.getAttribute("aria-busy") === "false");
   await page.waitForFunction(() => document.getElementById("activityList").textContent.includes("sample-downstairs"));
   await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => window.M?.version === "1.0.0");
 }
 async function refresh() {
   await page.locator("#refreshSchedules").click();
@@ -371,7 +375,7 @@ test("schedule text is inert and the expanded editor fits a small mobile viewpor
     await noOverflow();
   }
   await page.locator("#schedulePanel").scrollIntoViewIfNeeded();
-  await page.screenshot({path: path.join(outputDir, "schedule-editor-mobile.png"), fullPage: true});
+  await page.screenshot({animations: "disabled", path: path.join(outputDir, "schedule-editor-mobile.png"), fullPage: true});
 });
 
 test("header enablement saves immediately while the editor is collapsed and keeps a draft", async () => {
@@ -624,7 +628,7 @@ test("compact list and editor fit mobile and expose keyboard focus without scrip
   await page.setViewportSize({width: 390, height: 844});
   await ready();
   await page.locator("#schedulePanel").scrollIntoViewIfNeeded();
-  await page.locator("#scheduleList").screenshot({path: path.join(outputDir, "schedule-list-mobile.png")});
+  await page.locator("#scheduleList").screenshot({animations: "disabled", path: path.join(outputDir, "schedule-list-mobile.png")});
   const card = await openSchedule();
   await card.getByLabel("Kitchen", {exact: true}).waitFor();
   for (const width of [320, 390, 768]) {
@@ -633,7 +637,7 @@ test("compact list and editor fit mobile and expose keyboard focus without scrip
     assert.equal(await card.locator("dialog").evaluate((dialog) => dialog.scrollWidth > dialog.clientWidth), false);
   }
   await page.setViewportSize({width: 390, height: 844});
-  await card.locator("dialog").screenshot({path: path.join(outputDir, "schedule-dialog-mobile.png")});
+  await card.locator("dialog").screenshot({animations: "disabled", path: path.join(outputDir, "schedule-dialog-mobile.png")});
   await card.getByLabel("Start time", {exact: true}).fill("08:05");
   await page.keyboard.press("Escape");
   assert.equal(await card.locator("dialog").isVisible(), false);
@@ -782,22 +786,22 @@ test("pending credential reset stays bound to its vacuum across navigation", asy
 
 test("shared dashboard fits phone, tablet, desktop and dark mode", async () => {
   await ready();
-  await page.screenshot({path: path.join(outputDir, "dashboard-desktop.jpg"), type: "jpeg", quality: 60, fullPage: true});
+  await page.screenshot({animations: "disabled", path: path.join(outputDir, "dashboard-desktop.jpg"), type: "jpeg", quality: 60, fullPage: true});
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({width, height: 950});
     await noOverflow();
   }
   await page.setViewportSize({width: 390, height: 844});
-  await page.screenshot({path: path.join(outputDir, "dashboard-mobile.jpg"), type: "jpeg", quality: 60, fullPage: true});
+  await page.screenshot({animations: "disabled", path: path.join(outputDir, "dashboard-mobile.jpg"), type: "jpeg", quality: 60, fullPage: true});
   const card = await openSchedule();
   await card.getByLabel("Kitchen", {exact: true}).waitFor();
-  await card.locator("dialog").screenshot({path: path.join(outputDir, "editor-mobile.jpg"), type: "jpeg", quality: 60});
+  await card.locator("dialog").screenshot({animations: "disabled", path: path.join(outputDir, "editor-mobile.jpg"), type: "jpeg", quality: 60});
   await page.emulateMedia({colorScheme: "dark"});
-  await card.locator("dialog").screenshot({path: path.join(outputDir, "editor-dark.jpg"), type: "jpeg", quality: 60});
+  await card.locator("dialog").screenshot({animations: "disabled", path: path.join(outputDir, "editor-dark.jpg"), type: "jpeg", quality: 60});
   await page.keyboard.press("Escape");
   await page.setViewportSize({width: 1280, height: 1000});
   await noOverflow();
-  await page.screenshot({path: path.join(outputDir, "dashboard-dark.jpg"), type: "jpeg", quality: 60, fullPage: true});
+  await page.screenshot({animations: "disabled", path: path.join(outputDir, "dashboard-dark.jpg"), type: "jpeg", quality: 60, fullPage: true});
 });
 
 test("expired schedule sessions return to the existing sign-in page", async () => {

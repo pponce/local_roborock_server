@@ -61,6 +61,7 @@ jobs:
 
   browser:
     runs-on: ubuntu-latest
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -72,15 +73,29 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
-      - name: Install test tooling and render actual dashboard pages
+      - name: Install Python dependencies and render dashboard
+        timeout-minutes: 4
         run: |
           set -o pipefail
-          {
-            uv sync --locked --extra dev
-            uv run python tests/browser/render_pages.py
-            npm install --no-save --no-package-lock playwright@1.62.1
-            npx playwright install --with-deps chromium
-          } 2>&1 | tee browser-setup.log
+          uv sync --locked --extra dev 2>&1 | tee browser-setup.log
+          uv run python tests/browser/render_pages.py 2>&1 | tee -a browser-setup.log
+      - name: Install Playwright test package
+        timeout-minutes: 3
+        run: |
+          set -o pipefail
+          npm install --no-save --no-package-lock --fetch-retries=1 --fetch-timeout=60000 playwright@1.62.1 2>&1 | tee -a browser-setup.log
+      - name: Install Chromium system dependencies
+        timeout-minutes: 5
+        run: |
+          set -o pipefail
+          npx playwright install-deps chromium 2>&1 | tee -a browser-setup.log
+      - name: Install Chromium
+        timeout-minutes: 4
+        env:
+          PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: '60000'
+        run: |
+          set -o pipefail
+          npx playwright install chromium 2>&1 | tee -a browser-setup.log
       - name: Run browser suite
         run: |
           set -o pipefail
