@@ -1,0 +1,136 @@
+name: Integrated dashboard checks
+
+on:
+  push:
+    branches: [CHECK_ADMIN_DASHBOARD_INTEGRATION]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: integrated-dashboard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - name: Run full Python suite
+        run: |
+          set -o pipefail
+          uv run pytest -q 2>&1 | tee pytest.log
+      - name: Verify wheel assets
+        run: |
+          uv build --wheel
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          wheel = next(Path('dist').glob('*.whl'))
+          with zipfile.ZipFile(wheel) as archive:
+              for name in ('schedule_sections.html', 'schedules.css', 'schedules.js'):
+                  assert archive.read(f'roborock_local_server/admin_ui/{name}')
+          print('All three component assets are packaged.')
+          PY
+      - name: Publish diagnostics
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const text = fs.existsSync('pytest.log') ? fs.readFileSync('pytest.log', 'utf8') : 'pytest did not start';
+            await github.rest.checks.create({
+              owner: context.repo.owner, repo: context.repo.repo, head_sha: context.sha,
+              name: 'Python ${{ matrix.python }} diagnostics', status: 'completed',
+              conclusion: '${{ job.status }}' === 'success' ? 'success' : 'failure',
+              output: {title: 'Python and wheel validation', summary: text.slice(-55000)}
+            });
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install test tooling and render actual dashboard pages
+        run: |
+          set -o pipefail
+          {
+            uv sync --locked --extra dev
+            uv run python tests/browser/render_pages.py
+            npm install --no-save --no-package-lock playwright@1.62.1
+            npx playwright install --with-deps chromium
+          } 2>&1 | tee browser-setup.log
+      - name: Run browser suite
+        run: |
+          set -o pipefail
+          node --test tests/browser/admin-ui.test.cjs 2>&1 | tee browser.log
+      - name: Publish diagnostics and review previews
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const log = fs.existsSync('browser.log') ? fs.readFileSync('browser.log', 'utf8') : fs.existsSync('browser-setup.log') ? fs.readFileSync('browser-setup.log', 'utf8') : 'browser setup did not start';
+            await github.rest.checks.create({
+              owner: context.repo.owner, repo: context.repo.repo, head_sha: context.sha,
+              name: 'Browser diagnostics', status: 'completed',
+              conclusion: '${{ job.status }}' === 'success' ? 'success' : 'failure',
+              output: {title: 'Shared dashboard browser validation', summary: log.slice(-55000)}
+            });
+            const dir = 'tests/browser/artifacts';
+            for (const name of fs.existsSync(dir) ? fs.readdirSync(dir).filter(name => name.endsWith('.jpg')) : []) {
+              const base64 = fs.readFileSync(`${dir}/${name}`).toString('base64');
+              for (let start = 0; start < base64.length; start += 50000) {
+                await github.rest.checks.create({
+                  owner: context.repo.owner, repo: context.repo.repo, head_sha: context.sha,
+                  name: `UI preview ${name} part ${start / 50000 + 1}`, status: 'completed', conclusion: 'neutral',
+                  output: {title: name, summary: base64.slice(start, start + 50000)}
+                });
+              }
+            }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integrated-dashboard-previews
+          path: tests/browser/artifacts/
+          if-no-files-found: ignore
+
+  docker:
+    needs: [python, browser]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: local/roborock-server:admin-ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Verify packaged dashboard and scheduler modules
+        run: |
+          docker run --rm --network none local/roborock-server:admin-ci python -c 'from roborock_local_server.standalone_admin import _admin_dashboard_html; import roborock_local_server.admin_schedules; import roborock_local_server.bundled_backend.shared.schedule_runner; page = _admin_dashboard_html({}); assert "schedulePanel" in page and "activityList" in page'
