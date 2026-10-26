@@ -60,16 +60,7 @@
     }
   }
 
-  function postJson(url, body, timeout) {
-    return fetchJson(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}, timeout);
-  }
-
-  function badge(element, label, state) {
-    text(element, label);
-    element.className = `badge ${state}`;
-  }
-
-  function emptyState(container, title, description, action) {
+  function emptyState(container, title, description) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
     const heading = document.createElement("h3");
@@ -78,13 +69,6 @@
     copy.className = "muted";
     copy.textContent = description;
     empty.append(heading, copy);
-    if (action) {
-      const link = document.createElement("a");
-      link.href = "#cloud-import";
-      link.className = "button primary";
-      link.textContent = "Import from Roborock";
-      empty.append(link);
-    }
     container.replaceChildren(empty);
   }
 
@@ -93,8 +77,12 @@
     list.setAttribute("aria-busy", "false");
     const devices = items.filter((vacuum) => vacuum.duid && vacuum.mqtt_credentials);
     if (!devices.length) {
-      credentialCards.clear();
-      text(list, "No saved vacuum credentials are available.");
+      // Keep in-flight resets tracked even while the Server view is selected.
+      for (const [id, state] of credentialCards) {
+        if (state.busy) state.card.hidden = true;
+        else { state.card.remove(); credentialCards.delete(id); }
+      }
+      if (!credentialCards.size) text(list, "No saved vacuum credentials are available.");
       return;
     }
     if (!credentialCards.size) list.replaceChildren();

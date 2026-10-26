@@ -17,6 +17,7 @@
 :is(#schedulePanel, #credentialPanel) input:not([type="checkbox"]):not([type="radio"]), :is(#schedulePanel, #credentialPanel) select { display: block; box-sizing: border-box; width: 100%; min-width: 0; height: 42px; background: var(--rls-surface); color: var(--rls-text); border: 1px solid var(--rls-border); border-radius: 7px; padding: 8px 10px; margin: 0; }
 :is(#schedulePanel, #credentialPanel) input[type="checkbox"], :is(#schedulePanel, #credentialPanel) input[type="radio"] { pointer-events: auto; }
 :is(#schedulePanel, #credentialPanel) input + span { padding-left: 0; height: auto; line-height: inherit; }
+:is(#schedulePanel, #credentialPanel) .schedule-days span, :is(#schedulePanel, #credentialPanel) .schedule-segments span { pointer-events: none; }
 :is(#schedulePanel, #credentialPanel) input + span::before, :is(#schedulePanel, #credentialPanel) input + span::after { display: none; }
 :is(#schedulePanel, #credentialPanel) .room-choice input { opacity: 1; position: static; }
 :is(#schedulePanel, #credentialPanel) .schedule-enabled input[role="switch"] { opacity: 1; }

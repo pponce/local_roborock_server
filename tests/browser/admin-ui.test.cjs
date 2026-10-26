@@ -9,11 +9,6 @@ const {chromium} = require("playwright");
 const assetDir = path.resolve(__dirname, "../../src/roborock_local_server/admin_ui");
 const fixtureDir = path.resolve(__dirname, "artifacts/fixtures");
 const outputDir = path.resolve(__dirname, "artifacts");
-const support = {title: "Support This Project", text: "Help keep local control open and accessible.", links: [
-  {label: "Buy Me a Coffee", url: "https://buymeacoffee.com/lashl"},
-  {label: "PayPal", url: "https://paypal.me/LLashley304"},
-  {label: "Roborock Store", url: "https://us.roborock.com/"},
-]};
 let server, browser, context, page, baseURL, state;
 
 function fixtures() {
@@ -79,7 +74,7 @@ async function serve(req, res) {
   if (url.pathname === "/admin") {
     const html = await fs.readFile(path.join(fixtureDir, state.loggedIn ? "dashboard.html" : "login.html"), "utf8");
     res.writeHead(200, {"Content-Type": "text/html"});
-    res.end(html.replace("__PROJECT_SUPPORT__", JSON.stringify(support).replaceAll("<", "\\u003c")));
+    res.end(html);
     return;
   }
   if (url.pathname === "/admin/static/style.css") {
@@ -227,7 +222,7 @@ beforeEach(async () => {
       return route.fulfill({path: path.join(fixtureDir, "materialize.min.css"), contentType: "text/css"});
     }
     if (url.hostname === "fonts.googleapis.com" && url.pathname === "/icon") {
-      return route.fulfill({body: '@font-face{font-family:"Material Icons";src:url(/test-icons.woff2)}.material-icons{font-family:"Material Icons";font-weight:normal;font-style:normal;font-size:24px;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;word-wrap:normal;direction:ltr;font-feature-settings:"liga"}', contentType: "text/css"});
+      return route.fulfill({body: '@font-face{font-family:"Material Icons";src:url(' + baseURL + '/test-icons.woff2)}.material-icons{font-family:"Material Icons";font-weight:normal;font-style:normal;font-size:24px;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;word-wrap:normal;direction:ltr;font-feature-settings:"liga"}', contentType: "text/css"});
     }
     return route.abort();
   });
@@ -242,6 +237,7 @@ async function ready() {
   await page.waitForFunction(() => !document.getElementById("devicePanel").classList.contains("hidden"));
   await page.waitForFunction(() => document.getElementById("scheduleList")?.getAttribute("aria-busy") === "false");
   await page.waitForFunction(() => document.getElementById("activityList").textContent.includes("sample-downstairs"));
+  await page.evaluate(() => document.fonts.ready);
 }
 async function refresh() {
   await page.locator("#refreshSchedules").click();
@@ -454,7 +450,7 @@ test("named room and cleaning controls send only chosen settings and keep native
   await card.getByLabel("Water level", {exact: true}).selectOption({label: "Low"});
   await card.getByLabel("Mopping route", {exact: true}).selectOption({label: "Deep"});
   await card.getByLabel("Cleaning passes", {exact: true}).selectOption({label: "2 passes"});
-  await page.evaluate(() => document.getElementById("refresh").click());
+  await page.evaluate(() => document.getElementById("refreshSchedules").click());
   await page.waitForFunction(() => !document.getElementById("refreshSchedules").disabled);
   assert.equal(await card.getByLabel("Office", {exact: true}).isChecked(), true);
   assert.equal(await card.getByLabel("Water level", {exact: true}).inputValue(), "201");
@@ -807,8 +803,51 @@ test("shared dashboard fits phone, tablet, desktop and dark mode", async () => {
 test("expired schedule sessions return to the existing sign-in page", async () => {
   await ready();
   state.loggedIn = false;
-  await refresh();
+  await page.locator("#refreshSchedules").click();
   await page.locator("#password").waitFor({state: "visible"});
   assert.equal(await page.locator("#schedulePanel").count(), 0);
   assert.equal(await page.locator('link[href="/admin/static/style.css"]').count(), 1);
+});
+
+
+test("visiting Server during a reset cannot enable a duplicate reset", async () => {
+  state.resetDelay = 1500;
+  await ready();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", {name: "Clear MQTT credentials for Downstairs", exact: true}).click();
+  await page.locator("#deviceTabs").getByRole("button", {name: "Server", exact: true}).click();
+  await page.locator("#serverPanel").waitFor({state: "visible"});
+  await selectVacuum("Downstairs");
+  const button = page.getByRole("button", {name: "Clear MQTT credentials for Downstairs", exact: true});
+  assert.equal(await button.isDisabled(), true);
+  assert.equal(await button.textContent(), "Clearing…");
+  await page.waitForFunction(() => document.querySelector("#credentialList").textContent.includes("Credentials cleared for Downstairs"));
+  assert.equal(await button.isDisabled(), true);
+  assert.equal(state.requests.filter((request) => request.method === "DELETE").length, 1);
+});
+
+test("a vacuum snapshot taken before reset cannot restore its old credential state", async () => {
+  await ready();
+  const oldSnapshot = structuredClone(state.vacuums);
+  let releaseSnapshot, snapshotStarted;
+  const held = new Promise((resolve) => { releaseSnapshot = resolve; });
+  const started = new Promise((resolve) => { snapshotStarted = resolve; });
+  let intercept = true;
+  await page.route("**/admin/api/vacuums", async (route) => {
+    if (!intercept) return route.continue();
+    intercept = false;
+    snapshotStarted();
+    await held;
+    await route.fulfill({json: {vacuums: oldSnapshot}});
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("rls:refresh")));
+  await started;
+  page.once("dialog", (dialog) => dialog.accept());
+  const button = page.getByRole("button", {name: "Clear MQTT credentials for Downstairs", exact: true});
+  await button.click();
+  await page.waitForFunction(() => document.querySelector("#credentialList").textContent.includes("Credentials cleared for Downstairs"));
+  releaseSnapshot();
+  await page.waitForTimeout(250);
+  assert.equal(await button.isDisabled(), true);
+  assert.match(await page.locator("#credentialList").textContent(), /Credentials cleared/);
 });
